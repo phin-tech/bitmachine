@@ -2,7 +2,7 @@ import BitMachineKit
 import Foundation
 
 /// Owns the Playlist and what the Main Window shows, and hands the current Track to the engine for its Source
-/// (ADR 0001). Apple Music and Stations have engines so far; other Sources' Tracks are marked unavailable for now.
+/// (ADR 0001). Apple Music, Local Files and Stations have engines so far; Server Tracks are marked unavailable for now.
 @MainActor
 final class Player {
     private(set) var playlist = Playlist() {
@@ -151,7 +151,7 @@ final class Player {
 
     /// The analyzer follows what BitMachine's engine plays; paused or stopped, its bars fall away.
     private func animateVisualizer() {
-        let hearing = state.playback == .playing && (router.state == .routed || stations.isPlaying)
+        let hearing = state.playback == .playing && (router.state == .routed || stations.isPlaying || playingFile)
         let levels: [Double]
         if hearing {
             let recent = output.recentSamples()
@@ -168,7 +168,8 @@ final class Player {
         var next = state
         next.titleScroll += 5
         if next.playback == .playing, next.seeking == nil {
-            next.elapsed = next.isLive ? tunedIn.map { Date().timeIntervalSince($0) } ?? 0 : appleMusic.elapsed
+            next.elapsed = next.isLive ? tunedIn.map { Date().timeIntervalSince($0) } ?? 0
+                : playingFile ? output.fileElapsed : appleMusic.elapsed
         }
         if next.tuner != nil { next.tuner?.signal = stations.signal }
         if let tunedIn, Date().timeIntervalSince(tunedIn) > 60 { reconnects = 0 }
@@ -227,6 +228,16 @@ final class Player {
         else if state.playback == .stopped { showCurrent() }
     }
 
+    /// Adds audio files, and the audio files in folders (all the way down), as Local File Tracks; with `play`, the
+    /// first of them starts.
+    func addFiles(_ urls: [URL], play: Bool) {
+        Task {
+            let files = await Task.detached { LocalFiles.audioFiles(in: urls) }.value
+            guard !files.isEmpty else { return }
+            add(await LocalFiles.tracks(for: files), play: play)
+        }
+    }
+
     func remove(_ ids: Set<PlaylistEntry.ID>) {
         let wasCurrent = playlist.current.map(ids.contains) ?? false
         playlist.remove(ids)
@@ -257,7 +268,9 @@ final class Player {
             case .playing:
                 // A Station is live: paused, it lets go of the stream, and Play tunes in again.
                 // Bumping the generation lets a Station still connecting go quietly, not as a failure.
-                if state.isLive { generation += 1; stations.stop() } else { appleMusic.pause() }
+                if state.isLive { generation += 1; stations.stop() }
+                else if playingFile { output.pauseFile() }
+                else { appleMusic.pause() }
                 state.playback = .paused
             case .paused: resume()
             case .stopped: break
@@ -291,17 +304,24 @@ final class Player {
             do {
                 switch entry.track.source {
                 case .appleMusic:
-                    // One Source at a time feeds the output (it has one input).
+                    // One Source at a time feeds the output.
                     stations.stop()
+                    output.stopFile()
                     try await appleMusic.play(entry.track)
                     if generation == self.generation { await router.start() }
                 case let .station(url):
                     appleMusic.stop()
                     router.stop()
+                    output.stopFile()
                     try await stations.play(url)
                     guard generation == self.generation else { return }
                     tunedIn = Date()
-                case .localFile, .server: throw PlayError.noEngine
+                case let .localFile(url):
+                    appleMusic.stop()
+                    router.stop()
+                    stations.stop()
+                    try playFile(url, generation: generation)
+                case .server: throw PlayError.noEngine
                 }
                 guard generation == self.generation else { return }
                 playlist.markUnavailable(entry.id, reason: nil)
@@ -315,6 +335,26 @@ final class Player {
         }
     }
 
+    /// Whether a Local File is what's playing (or paused).
+    private var playingFile: Bool {
+        state.playback != .stopped && playlist.currentEntry?.track.source.isLocalFile == true
+    }
+
+    private func playFile(_ url: URL, generation: Int) throws {
+        let info = try output.playFile(url) { [weak self] in
+            // The output calls back on the main queue.
+            MainActor.assumeIsolated {
+                guard let self, generation == self.generation else { return }
+                self.trackEnded()
+            }
+        }
+        state.duration = info.duration
+        state.khz = Int((info.sampleRate / 1000).rounded())
+        state.stereo = info.channels > 1
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        state.kbps = info.duration > 0 ? Int((Double(bytes) * 8 / info.duration / 1000).rounded()) : nil
+    }
+
     private enum PlayError: LocalizedError {
         case noEngine
         var errorDescription: String? { "BitMachine can't play this kind of Track yet" }
@@ -323,6 +363,7 @@ final class Player {
     private func resume() {
         if state.isLive, let current = playlist.current { play(current); return }
         state.playback = .playing
+        if playlist.currentEntry?.track.source.isLocalFile == true { output.resumeFile(); return }
         Task { try? await appleMusic.resume() }
     }
 
@@ -331,6 +372,7 @@ final class Player {
         appleMusic.stop()
         router.stop()
         stations.stop()
+        output.stopFile()
         tunedIn = nil
         state.playback = .stopped
         state.elapsed = 0
@@ -344,7 +386,7 @@ final class Player {
     private func seek(to time: TimeInterval) {
         // A Station is live: there's nowhere to seek to.
         guard !state.isLive else { return }
-        appleMusic.seek(to: time)
+        if playingFile { output.seekFile(to: time) } else { appleMusic.seek(to: time) }
         state.elapsed = time
     }
 

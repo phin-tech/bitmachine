@@ -187,6 +187,21 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Asks for audio files, or folders of them, and adds them to the end of the Playlist.
+    private func chooseFiles(folders: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = !folders
+        panel.canChooseDirectories = folders
+        if !folders { panel.allowedContentTypes = [.audio] }
+        panel.message = folders ? "Add the music in these folders" : "Add these files"
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK else { return }
+        player.addFiles(panel.urls, play: false)
+    }
+
+    func dropped(_ urls: [URL]) { player.addFiles(urls, play: false) }
+
     private func show(_ which: PlaylistMenu) {
         let menu = NSMenu()
         func item(_ title: String, enabled: Bool = true, _ action: @escaping () -> Void) {
@@ -198,7 +213,8 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         switch which {
         case .add:
             item("Find Music…") { AppDelegate.shared.showLibrary(nil) }
-            item("Add Files…", enabled: false) {}
+            item("Add Files…") { [weak self] in self?.chooseFiles(folders: false) }
+            item("Add Folder…") { [weak self] in self?.chooseFiles(folders: true) }
         case .remove:
             item("Remove Selected", enabled: !selection.isEmpty) { [weak self] in self?.removeSelection() }
             item("Crop to Selection", enabled: !selection.isEmpty) { [weak self] in
@@ -269,6 +285,22 @@ private func localizedLess(_ a: [String], _ b: [String]) -> Bool {
 @MainActor
 final class PlaylistWindowView: NSView {
     weak var controller: PlaylistWindowController?
+
+    // MARK: Dropping files from the Finder
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerForDraggedTypes(FileDrop.types)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { FileDrop.operation(sender) }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = FileDrop.urls(sender)
+        guard !urls.isEmpty else { return false }
+        controller?.dropped(urls)
+        return true
+    }
     var image: CGImage?
     var scale: CGFloat = 1
 

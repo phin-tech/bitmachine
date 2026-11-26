@@ -18,6 +18,11 @@ public enum TrackSource: Hashable, Codable, Sendable {
         if case .station = self { return true }
         return false
     }
+
+    public var isLocalFile: Bool {
+        if case .localFile = self { return true }
+        return false
+    }
 }
 
 /// One playable piece of audio from any Source, with what BitMachine last knew about it, so it can still be shown

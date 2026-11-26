@@ -19,6 +19,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         didSet { resize() }
     }
 
+    /// Files dropped on the Main Window join the Playlist, and the first of them plays.
+    func dropped(_ urls: [URL]) { player.addFiles(urls, play: true) }
+
     init(skin: Skin, player: Player) {
         self.skin = skin
         self.player = player
@@ -132,6 +135,22 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 @MainActor
 final class MainWindowView: NSView {
     weak var controller: MainWindowController?
+
+    // MARK: Dropping files from the Finder
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerForDraggedTypes(FileDrop.types)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { FileDrop.operation(sender) }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = FileDrop.urls(sender)
+        guard !urls.isEmpty else { return false }
+        controller?.dropped(urls)
+        return true
+    }
     var image: CGImage?
     var scale: CGFloat = 1
     /// The title to draw in Intel One Mono over the Skin: text, how far it has scrolled (skin pixels), and colours.

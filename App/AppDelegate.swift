@@ -147,10 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: Self.skinKey)
     }
 
+    /// A Skin opened with BitMachine becomes the Skin; music files and folders join the Playlist and play.
     func application(_: NSApplication, open urls: [URL]) {
-        if let url = urls.first(where: { ["wsz", "zip"].contains($0.pathExtension.lowercased()) }) {
-            load(skinAt: url)
-        }
+        let isSkin = { (url: URL) in ["wsz", "zip"].contains(url.pathExtension.lowercased()) }
+        if let url = urls.first(where: isSkin) { load(skinAt: url) }
+        let music = urls.filter { !isSkin($0) }
+        if !music.isEmpty { player.addFiles(music, play: true) }
     }
 
     // MARK: Windows
