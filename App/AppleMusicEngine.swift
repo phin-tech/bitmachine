@@ -81,6 +81,107 @@ final class AppleMusicEngine {
         return items.map(Self.track)
     }
 
+    // MARK: Browsing the Apple Music Library
+
+    private var libraryArtists: [String: Artist] = [:]
+    private var libraryAlbums: [String: Album] = [:]
+
+    /// Every artist in the library, A to Z.
+    func artists() async throws -> [BrowseItem] {
+        guard await Self.authorize() else { throw Failure.notAuthorized }
+        var request = MusicLibraryRequest<Artist>()
+        request.limit = 10000
+        request.sort(by: \.name, ascending: true)
+        let items = try await request.response().items
+        items.forEach { libraryArtists[$0.id.rawValue] = $0 }
+        return items.map { BrowseItem(id: $0.id.rawValue, name: $0.name) }
+    }
+
+    /// An artist's albums in the library, oldest first.
+    func albums(ofArtist id: String) async throws -> [BrowseItem] {
+        guard let artist = libraryArtists[id] else { return [] }
+        var request = MusicLibraryRequest<Album>()
+        request.limit = 1000
+        request.filter(matching: \.artists, contains: artist)
+        // The library's own date sort has no effect, so they're put in order here.
+        let items = try await request.response().items.sorted {
+            ($0.releaseDate ?? .distantFuture, $0.title) < ($1.releaseDate ?? .distantFuture, $1.title)
+        }
+        items.forEach { libraryAlbums[$0.id.rawValue] = $0 }
+        return items.map { album in
+            BrowseItem(id: album.id.rawValue, name: album.title,
+                       year: album.releaseDate.map { Calendar.current.component(.year, from: $0) })
+        }
+    }
+
+    /// An artist's songs in the library, album by album in track order.
+    func songs(ofArtist id: String) async throws -> [Track] {
+        guard let artist = libraryArtists[id] else { return [] }
+        var request = MusicLibraryRequest<Song>()
+        request.limit = 5000
+        request.filter(matching: \.artists, contains: artist)
+        return tracks(inAlbumOrder: Array(try await request.response().items))
+    }
+
+    func songs(ofAlbum id: String) async throws -> [Track] {
+        guard let album = libraryAlbums[id] else { return [] }
+        var request = MusicLibraryRequest<Song>()
+        request.limit = 1000
+        request.filter(matching: \.albums, contains: album)
+        return tracks(inAlbumOrder: Array(try await request.response().items))
+    }
+
+    private func tracks(inAlbumOrder songs: [Song]) -> [Track] {
+        let order = Dictionary(songs.map { ($0.albumTitle ?? "", $0.releaseDate ?? .distantPast) },
+                               uniquingKeysWith: min)
+        let sorted = songs.sorted { a, b in
+            let da = order[a.albumTitle ?? ""] ?? .distantPast, db = order[b.albumTitle ?? ""] ?? .distantPast
+            if da != db { return da < db }
+            if a.albumTitle != b.albumTitle { return (a.albumTitle ?? "") < (b.albumTitle ?? "") }
+            if a.discNumber != b.discNumber { return (a.discNumber ?? 0) < (b.discNumber ?? 0) }
+            return (a.trackNumber ?? 0) < (b.trackNumber ?? 0)
+        }
+        sorted.forEach(remember)
+        return sorted.map(Self.track)
+    }
+
+    /// Songs in the library matching `term` in title, artist or album.
+    func searchLibrary(_ term: String) async throws -> [Track] {
+        guard await Self.authorize() else { throw Failure.notAuthorized }
+        var request = MusicLibraryRequest<Song>()
+        request.limit = 500
+        request.filter(text: term)
+        let items = try await request.response().items
+        items.forEach(remember)
+        return items.map(Self.track)
+    }
+
+    // MARK: Apple Music Playlists
+
+    private var libraryPlaylists: [String: MusicKit.Playlist] = [:]
+
+    func playlists() async throws -> [BrowseItem] {
+        guard await Self.authorize() else { throw Failure.notAuthorized }
+        var request = MusicLibraryRequest<MusicKit.Playlist>()
+        request.limit = 1000
+        request.sort(by: \.name, ascending: true)
+        let items = try await request.response().items
+        items.forEach { libraryPlaylists[$0.id.rawValue] = $0 }
+        return items.map { BrowseItem(id: $0.id.rawValue, name: $0.name) }
+    }
+
+    /// An Apple Music Playlist's songs (its music videos are left out).
+    func tracks(ofPlaylist id: String) async throws -> (name: String, tracks: [Track]) {
+        guard let playlist = libraryPlaylists[id] else { throw Failure.notFound }
+        let detailed = try await playlist.with([.tracks])
+        let songs: [Song] = (detailed.tracks ?? []).compactMap {
+            if case let .song(song) = $0 { return song }
+            return nil
+        }
+        songs.forEach(remember)
+        return (playlist.name, songs.map(Self.track))
+    }
+
     private func song(id: String) async throws -> Song {
         if let song = songs[id] { return song }
         let found: Song?

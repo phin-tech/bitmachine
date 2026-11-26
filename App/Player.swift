@@ -258,6 +258,14 @@ final class Player {
 
     func move(_ ids: [PlaylistEntry.ID], to index: Int) { playlist.move(ids, to: index) }
 
+    /// Puts these Tracks in place of the Playlist (an Apple Music Playlist opened), stopped at the first.
+    func replacePlaylist(with tracks: [Track]) {
+        stop()
+        playlist.removeAll()
+        _ = playlist.append(tracks)
+        showCurrent()
+    }
+
     // MARK: Server Playlists
 
     /// Opens a Server Playlist: a copy of its Tracks replaces the Playlist, stopped at its first Track.

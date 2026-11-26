@@ -87,6 +87,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // BITMACHINE_APPLE_PLAYLIST="<name>" (or "?" for the first) opens that Apple Music Playlist, as the Library's menu would.
+        if let name = ProcessInfo.processInfo.environment["BITMACHINE_APPLE_PLAYLIST"] {
+            Task {
+                do {
+                    guard let found = try await player.appleMusic.playlists().first(where: { name == "?" || $0.name == name }) else {
+                        NSLog("BitMachine: no Apple Music Playlist named %@", name)
+                        return
+                    }
+                    let (_, tracks) = try await player.appleMusic.tracks(ofPlaylist: found.id)
+                    player.replacePlaylist(with: tracks)
+                } catch {
+                    NSLog("BitMachine: BITMACHINE_APPLE_PLAYLIST failed: \(error)")
+                }
+            }
+        }
         // BITMACHINE_SERVER="<address>|<user>|<password>" signs in to a Server at launch, and
         // BITMACHINE_SERVER_PLAY="<search>" then plays what it finds there.
         let environment = ProcessInfo.processInfo.environment

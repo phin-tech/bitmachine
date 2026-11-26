@@ -33,27 +33,71 @@ final class LibraryModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var watching: Set<AnyCancellable> = []
 
-    // MARK: Servers
+    // MARK: Browsing (My Library and Servers)
 
-    /// The Server browsed, and its artist and album picked ("" for none).
-    @Published var server = "" { didSet { if server != oldValue { enterServer() } } }
-    @Published var serverArtists: [ServerArtist] = []
-    @Published var serverAlbums: [ServerAlbum] = []
-    @Published var serverPlaylists: [ServerPlaylistSummary] = []
-    @Published var serverArtist = "" { didSet { if serverArtist != oldValue { serverAlbum = ""; loadServerAlbums() } } }
-    @Published var serverAlbum = "" { didSet { if serverAlbum != oldValue { loadServerSongs() } } }
+    /// The Server browsed in the Servers tab.
+    @Published var server = "" { didSet { if server != oldValue { enterBrowser() } } }
+    /// The artists, albums and playlists of what's browsed, and the artist and album picked ("" for none).
+    @Published var browseArtists: [BrowseItem] = []
+    @Published var browseAlbums: [BrowseItem] = []
+    @Published var browsePlaylists: [BrowseItem] = []
+    @Published var browseArtist = "" { didSet { if browseArtist != oldValue { browseAlbum = ""; loadAlbums() } } }
+    @Published var browseAlbum = "" { didSet { if browseAlbum != oldValue { loadSongs() } } }
     var servers: Servers { player.servers }
-    private var serverTask: Task<Void, Never>?
+    private var browseTask: Task<Void, Never>?
 
-    /// Runs a Server request for the Servers tab, showing what goes wrong; a newer one replaces it.
-    private func onServer(_ work: @escaping (SubsonicClient) async throws -> Void) {
-        serverTask?.cancel()
-        guard scope == .servers, !server.isEmpty else { return }
-        serverTask = Task {
+    /// What the tab shown can be browsed by.
+    private struct Browser {
+        var artists: @MainActor () async throws -> [BrowseItem]
+        var albums: @MainActor (String) async throws -> [BrowseItem]
+        var songsOfArtist: @MainActor (String) async throws -> [Track]
+        var songsOfAlbum: @MainActor (String) async throws -> [Track]
+        var search: @MainActor (String) async throws -> [Track]
+        var playlists: @MainActor () async throws -> [BrowseItem]
+        /// Puts a playlist's songs in place of the Playlist.
+        var open: @MainActor (BrowseItem) async throws -> Void
+    }
+
+    private func browser() throws -> Browser? {
+        switch scope {
+        case .library:
+            let music = player.appleMusic, player = player
+            return Browser(artists: music.artists, albums: music.albums(ofArtist:), songsOfArtist: music.songs(ofArtist:),
+                           songsOfAlbum: music.songs(ofAlbum:), search: music.searchLibrary, playlists: music.playlists,
+                           open: { playlist in
+                               let (_, tracks) = try await music.tracks(ofPlaylist: playlist.id)
+                               player.replacePlaylist(with: tracks)
+                           })
+        case .servers:
+            guard !server.isEmpty else { return nil }
+            let client = try servers.client(for: server), server = server, player = player
+            return Browser(
+                artists: { try await client.artists().map { BrowseItem(id: $0.id, name: $0.name) } },
+                albums: { try await client.albums(ofArtist: $0).map { BrowseItem(id: $0.id, name: $0.name, year: $0.year) } },
+                songsOfArtist: { artist in
+                    var songs: [Track] = []
+                    for album in try await client.albums(ofArtist: artist) { songs += try await client.songs(ofAlbum: album.id) }
+                    return songs
+                },
+                songsOfAlbum: client.songs(ofAlbum:), search: { try await client.search($0) },
+                playlists: { try await client.playlists().map { BrowseItem(id: $0.id, name: $0.name, count: $0.songCount) } },
+                open: { try await player.openServerPlaylist($0.id, on: server) })
+        case .catalog, .files:
+            return nil
+        }
+    }
+
+    /// Runs a request for the tab shown, showing what goes wrong; a newer one replaces it.
+    private func browsing(_ work: @escaping @MainActor (Browser) async throws -> Void) {
+        browseTask?.cancel()
+        let browser: Browser?
+        do { browser = try self.browser() } catch { status = error.localizedDescription; return }
+        guard let browser else { return }
+        browseTask = Task {
             isSearching = true
             defer { isSearching = false }
             do {
-                try await work(try servers.client(for: server))
+                try await work(browser)
             } catch is CancellationError {
             } catch {
                 guard !Task.isCancelled else { return }
@@ -62,78 +106,74 @@ final class LibraryModel: ObservableObject {
         }
     }
 
-    /// Shows a Server: its artists and playlists, nothing picked.
-    func enterServer() {
-        guard scope == .servers else { return }
-        if servers.account(server) == nil { server = servers.accounts.first?.id ?? ""; return }
-        serverArtist = ""
-        serverAlbums = []
+    /// Shows the library or Server: its artists and playlists, nothing picked.
+    func enterBrowser() {
+        if scope == .servers, servers.account(server) == nil, let first = servers.accounts.first {
+            server = first.id
+            return
+        }
+        browseArtists = []
+        browsePlaylists = []
+        browseArtist = ""
+        browseAlbums = []
         results = []
         status = ""
-        onServer { client in
-            async let artists = client.artists()
-            async let playlists = client.playlists()
-            self.serverArtists = try await artists
-            self.serverPlaylists = (try? await playlists) ?? []
-            self.status = "\(self.serverArtists.count) artists. Pick one, or search."
+        browsing { browser in
+            self.browseArtists = try await browser.artists()
+            self.browsePlaylists = (try? await browser.playlists()) ?? []
+            self.status = "\(self.browseArtists.count) artists. Pick one, or search."
         }
     }
 
-    private func loadServerAlbums() {
-        serverAlbums = []
+    private func loadAlbums() {
+        browseAlbums = []
         results = []
-        guard !serverArtist.isEmpty else { return }
-        let artist = serverArtist
-        onServer { client in
-            let albums = try await client.albums(ofArtist: artist)
-            self.serverAlbums = albums
+        guard !browseArtist.isEmpty else { return }
+        let artist = browseArtist
+        browsing { browser in
+            self.browseAlbums = try await browser.albums(artist)
             // All the artist's songs, album by album, until one is picked.
-            var songs: [Track] = []
-            for album in albums { songs += try await client.songs(ofAlbum: album.id) }
+            let all = try await browser.songsOfArtist(artist)
             try Task.checkCancellation()
-            self.results = songs
-            self.status = Self.songs(songs.count)
+            self.results = all
+            self.status = Self.songs(all.count)
         }
     }
 
-    private func loadServerSongs() {
-        guard !serverAlbum.isEmpty else { loadServerAlbums(); return }
-        let album = serverAlbum
-        onServer { client in
-            self.results = try await client.songs(ofAlbum: album)
+    private func loadSongs() {
+        guard !browseAlbum.isEmpty else { loadAlbums(); return }
+        let album = browseAlbum
+        browsing { browser in
+            self.results = try await browser.songsOfAlbum(album)
             self.status = Self.songs(self.results.count)
         }
     }
 
     static func songs(_ count: Int) -> String { count == 1 ? "1 song" : "\(count) songs" }
 
-    func searchServer(_ term: String) {
+    private func searchBrowser(_ term: String) {
         guard !term.isEmpty else { return }
-        onServer { client in
-            self.results = try await client.search(term)
+        browsing { browser in
+            self.results = try await browser.search(term)
             self.status = self.results.isEmpty ? "Nothing found" : Self.songs(self.results.count)
         }
     }
 
-    /// Opens a Server Playlist in place of the Playlist, asking first if that would replace anything.
-    func openServerPlaylist(_ summary: ServerPlaylistSummary) {
+    /// Opens a playlist in place of the Playlist, asking first if that would replace anything.
+    func open(_ playlist: BrowseItem) {
         if !player.playlist.isEmpty {
             let alert = NSAlert()
-            alert.messageText = "Replace the Playlist with “\(summary.name)”?"
-            alert.informativeText = "Its \(summary.songCount) songs take the place of what's in the Playlist now. "
-                + "LIST ▸ Save to Server Playlist writes your changes back to the Server."
+            alert.messageText = "Replace the Playlist with “\(playlist.name)”?"
+            alert.informativeText = scope == .servers
+                ? "Its songs take the place of what's in the Playlist now. LIST ▸ Save to Server Playlist writes your "
+                + "changes back to the Server."
+                : "Its songs take the place of what's in the Playlist now. Your changes stay in BitMachine; the "
+                + "Apple Music Playlist doesn't change."
             alert.addButton(withTitle: "Replace")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
-        let server = server
-        Task {
-            do {
-                try await player.openServerPlaylist(summary.id, on: server)
-            } catch {
-                status = error.localizedDescription
-            }
-        }
+        browsing { browser in try await browser.open(playlist) }
     }
 
     init(player: Player) {
@@ -143,7 +183,7 @@ final class LibraryModel: ObservableObject {
             Task { @MainActor in
                 guard let self, self.scope == .servers, self.servers.account(self.server) == nil else { return }
                 self.server = ""
-                self.enterServer()
+                self.enterBrowser()
             }
         }.store(in: &watching)
         // The index changes as the folders are read; My Files follows it.
@@ -161,8 +201,7 @@ final class LibraryModel: ObservableObject {
         status = ""
         switch scope {
         case .files: refreshFiles()
-        case .servers: enterServer()
-        case .library: search()
+        case .servers, .library: enterBrowser()
         case .catalog: if !query.isEmpty { search() }
         }
     }
@@ -211,15 +250,9 @@ final class LibraryModel: ObservableObject {
                 case .files:
                     refreshFiles()
                     return
-                case .servers:
-                    searchServer(term)
+                case .servers, .library:
+                    searchBrowser(term)
                     return
-                case .library:
-                    let all = try await player.appleMusic.librarySongs(limit: 500)
-                    results = term.isEmpty ? all : all.filter {
-                        $0.title.localizedCaseInsensitiveContains(term) || $0.artist.localizedCaseInsensitiveContains(term)
-                            || $0.album.localizedCaseInsensitiveContains(term)
-                    }
                 }
                 status = results.isEmpty ? "Nothing found" : Self.songs(results.count)
             } catch is CancellationError {
@@ -276,19 +309,15 @@ struct LibraryView: View {
                         .frame(height: 150)
                     }
                 }
-                if model.scope == .servers {
-                    if model.servers.accounts.isEmpty {
-                        noServers
-                    } else {
-                        HStack(spacing: 6) {
-                            column("Pick an artist", model.serverArtists.map { ($0.id, $0.name) },
-                                   selection: $model.serverArtist)
-                            column("All Albums", model.serverAlbums.map { album in
-                                (album.id, album.year.map { "\(album.name) (\($0))" } ?? album.name)
-                            }, selection: $model.serverAlbum)
-                        }
-                        .frame(height: 150)
+                if model.scope == .servers, model.servers.accounts.isEmpty {
+                    noServers
+                } else if model.scope == .servers || model.scope == .library {
+                    HStack(spacing: 6) {
+                        column("Pick an artist", model.browseArtists.map { ($0.id, $0.name) },
+                               selection: $model.browseArtist)
+                        column("All Albums", model.browseAlbums.map { ($0.id, $0.label) }, selection: $model.browseAlbum)
                     }
+                    .frame(height: 150)
                 }
                 list(count: model.results.count, selection: $selectedResults) { i in
                     let track = model.results[i]
@@ -301,6 +330,7 @@ struct LibraryView: View {
                     Spacer()
                     if model.scope == .files { musicFoldersMenu }
                     if model.scope == .servers, !model.servers.accounts.isEmpty { serversMenus }
+                    if model.scope == .library { playlistsMenu("Apple Music Playlists") }
                     Button("Add to Playlist") {
                         model.add(selectedResults.sorted().map { model.results[$0] }, play: false)
                     }
@@ -323,7 +353,7 @@ struct LibraryView: View {
     private var placeholder: String {
         switch model.scope {
         case .catalog: "Search Apple Music"
-        case .library: "Filter your library"
+        case .library: "Search your library"
         case .files: "Filter your files"
         case .servers: "Search the Server"
         }
@@ -357,10 +387,14 @@ struct LibraryView: View {
             .labelsHidden()
             .fixedSize()
         }
-        Menu("Server Playlists") {
-            if model.serverPlaylists.isEmpty { Text("This Server has no playlists") }
-            ForEach(model.serverPlaylists) { playlist in
-                Button("\(playlist.name) (\(playlist.songCount))") { model.openServerPlaylist(playlist) }
+        playlistsMenu("Server Playlists")
+    }
+
+    private func playlistsMenu(_ title: String) -> some View {
+        Menu(title) {
+            if model.browsePlaylists.isEmpty { Text("No playlists") }
+            ForEach(model.browsePlaylists) { playlist in
+                Button(playlist.count.map { "\(playlist.name) (\($0))" } ?? playlist.name) { model.open(playlist) }
             }
         }
         .fixedSize()
