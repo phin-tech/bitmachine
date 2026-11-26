@@ -8,6 +8,7 @@ final class Player {
     private(set) var playlist = Playlist() {
         didSet {
             onPlaylistChange?()
+            playlistObservers.forEach { $0() }
             scheduleSave()
         }
     }
@@ -24,13 +25,30 @@ final class Player {
                 output.balance = state.balance
                 UserDefaults.standard.set(state.balance, forKey: Self.balanceKey)
             }
-            if state != oldValue { onChange?() }
+            if state != oldValue {
+                onChange?()
+                stateObservers.forEach { $0() }
+            }
         }
     }
 
     var onChange: (() -> Void)?
     var onPlaylistChange: (() -> Void)?
     var onEqualizerChange: (() -> Void)?
+    private var stateObservers: [() -> Void] = []
+    private var playlistObservers: [() -> Void] = []
+
+    /// Also told when what the Main Window shows changes, or the Playlist does.
+    func observeState(_ observer: @escaping () -> Void) { stateObservers.append(observer) }
+    func observePlaylist(_ observer: @escaping () -> Void) { playlistObservers.append(observer) }
+
+    /// Changes the Playlist's order or contents in place (sort, reverse, crop…); the current Track keeps playing.
+    func edit(_ change: (inout Playlist) -> Void) {
+        let current = playlist.current
+        change(&playlist)
+        if state.playback != .stopped, let current, playlist.entry(current) == nil { stop() }
+        else if state.playback == .stopped { showCurrent() }
+    }
 
     private static let equalizerKey = "equalizer"
 

@@ -69,7 +69,6 @@ final class LibraryModel: ObservableObject {
 struct LibraryView: View {
     @ObservedObject var model: LibraryModel
     @State private var selectedResults = Set<Int>()
-    @State private var selectedEntries = Set<PlaylistEntry.ID>()
 
     private var text: Color { Color(cgColor: model.colors.normal.cgColor) }
     private var currentText: Color { Color(cgColor: model.colors.current.cgColor) }
@@ -82,7 +81,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        VSplitView {
+        VStack(spacing: 0) {
             VStack(spacing: 6) {
                 HStack {
                     Picker("", selection: $model.scope) {
@@ -114,38 +113,8 @@ struct LibraryView: View {
             .padding(8)
             .frame(minHeight: 200)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Playlist").font(.headline)
-                    Spacer()
-                    Button("Remove") { model.player.remove(selectedEntries); selectedEntries = [] }
-                        .disabled(selectedEntries.isEmpty)
-                    Button("Clear") { model.player.removeAll() }.disabled(model.entries.isEmpty)
-                }
-                List(selection: $selectedEntries) {
-                    ForEach(Array(model.entries.enumerated()), id: \.element.id) { i, entry in
-                        row("\(i + 1). \(entry.track.displayTitle)", album: entry.unavailable ?? "",
-                            duration: entry.track.duration,
-                            colour: entry.id == model.current ? currentText : text)
-                            .opacity(entry.unavailable == nil ? 1 : 0.45)
-                            .listRowBackground(selectedEntries.contains(entry.id) ? selection : background)
-                            .tag(entry.id)
-                    }
-                    .onMove { from, to in
-                        model.player.move(from.map { model.entries[$0].id }, to: to)
-                    }
-                }
-                .contextMenu(forSelectionType: PlaylistEntry.ID.self) { _ in } primaryAction: { ids in
-                    if let id = ids.first { model.player.play(id) }
-                }
-                .onDeleteCommand { model.player.remove(selectedEntries); selectedEntries = [] }
-                .scrollContentBackground(.hidden)
-                .background(background)
-            }
-            .padding(8)
-            .frame(minHeight: 160)
         }
-        .frame(minWidth: 520, minHeight: 420)
+        .frame(minWidth: 520, minHeight: 300)
     }
 
     private func row(_ title: String, album: String, duration: TimeInterval?, colour: Color) -> some View {

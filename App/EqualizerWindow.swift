@@ -101,6 +101,7 @@ final class EqualizerWindowController: NSObject, NSWindowDelegate {
         case .shade:
             state.isWindowshade.toggle()
             resize()
+            onVisibilityChange?()
         case .on: player.equalizer.on.toggle()
         case .auto: player.equalizer.auto.toggle()
         case .presets: showPresets()

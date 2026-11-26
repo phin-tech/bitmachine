@@ -102,6 +102,31 @@ public struct Playlist: Equatable, Codable, Sendable {
         entries.insert(contentsOf: moving, at: at)
     }
 
+    /// Reorders the entries: sorted, reversed, or randomized. The current entry stays current.
+    public mutating func sort(by areInOrder: (Track, Track) -> Bool) {
+        entries.sort { areInOrder($0.track, $1.track) }
+    }
+
+    public mutating func reverse() { entries.reverse() }
+
+    public mutating func randomize() {
+        var rng = SplitMix(seed: seed)
+        entries.shuffle(using: &rng)
+        seed = rng.next()
+    }
+
+    /// Removes every Unavailable Track.
+    public mutating func removeUnavailable() {
+        remove(Set(entries.filter { $0.unavailable != nil }.map(\.id)))
+    }
+
+    /// The total length of the entries with known durations, and whether any duration was unknown.
+    public func totalDuration(of ids: Set<PlaylistEntry.ID>? = nil) -> (seconds: TimeInterval, complete: Bool) {
+        let chosen = ids.map { ids in entries.filter { ids.contains($0.id) } } ?? entries
+        let known = chosen.compactMap(\.track.duration)
+        return (known.reduce(0, +), known.count == chosen.count)
+    }
+
     public mutating func removeAll() {
         entries = []
         current = nil

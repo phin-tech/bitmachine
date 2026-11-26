@@ -68,7 +68,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func redraw() {
         var state = player.state
         state.isFocused = window.isKeyWindow
-        state.playlistOpen = AppDelegate.shared?.isLibraryVisible ?? false
+        state.playlistOpen = AppDelegate.shared?.isPlaylistVisible ?? false
         state.equalizerOpen = AppDelegate.shared?.isEqualizerVisible ?? false
         state.titleInPixelFont = !UserDefaults.standard.bool(forKey: Fonts.titleKey)
         view.title = state.titleInPixelFont || state.isWindowshade
@@ -110,9 +110,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         case .shuffle: player.state.shuffle.toggle()
         case .repeats: player.state.repeats.toggle()
         case .equalizer: AppDelegate.shared.toggleEqualizer(nil)
-        case .playlist:
-            // Until the skinned Playlist Window exists, the Playlist lives in the Library Window.
-            AppDelegate.shared.showLibrary(nil)
+        case .playlist: AppDelegate.shared.togglePlaylist(nil)
         case .time: player.state.showsRemaining.toggle()
         case .titleBar, .volume, .balance, .position: break
         }

@@ -62,7 +62,8 @@ public enum PlaceholderSkin {
         case .text: text(c)
         case .eqmain: equalizer(c)
         case .eqEx: equalizerExtras(c)
-        case .pledit, .gen: c.fill(0, 0, w, h, Palette.body)
+        case .pledit: playlist(c)
+        case .gen: c.fill(0, 0, w, h, Palette.body)
         }
         return c.image()
     }
@@ -258,6 +259,64 @@ public enum PlaceholderSkin {
         c.box(11, 47, 9, 9, Palette.buttonDown, glyph: "x")
     }
 
+    static func playlist(_ c: Canvas) {
+        // Title bar pieces, focused (y 0) and not (y 21): left corner, title, tile, right corner.
+        for (y, colour) in [(0, Palette.accent), (21, Palette.accentDim)] {
+            for (x, w) in [(0, 25), (26, 100), (127, 25), (153, 25)] {
+                c.fill(x, y, w, 20, Palette.body)
+                c.fill(x, y + 4, w, 12, colour)
+                c.fill(x, y, w, 1, Palette.bodyLight)
+                c.fill(x, y + 19, w, 1, Palette.bodyDark)
+            }
+            c.fill(0, y, 1, 20, Palette.bodyLight)
+            c.fill(177, y, 1, 20, Palette.bodyDark)
+            c.text("playlist", 26 + 30, y + 7, Palette.glyph, background: colour)
+            c.box(153 + 4, y + 3, 9, 9, Palette.button, glyph: "-")
+            c.box(153 + 14, y + 3, 9, 9, Palette.button, glyph: "x")
+        }
+        // The sides: the left edge, and the right edge with the scroll track.
+        c.fill(0, 42, 12, 29, Palette.body)
+        c.fill(0, 42, 1, 29, Palette.bodyLight)
+        c.fill(31, 42, 20, 29, Palette.body)
+        c.fill(36, 42, 8, 29, Palette.bodyDark)
+        c.fill(50, 42, 1, 29, Palette.bodyDark)
+        for (x, colour) in [(52, Palette.button), (61, Palette.accent)] {
+            c.fill(x, 53, 8, 18, colour)
+            c.bevel(x, 53, 8, 18, light: Palette.bodyLight, dark: Palette.bodyDark)
+        }
+        c.box(52, 42, 9, 9, Palette.buttonDown, glyph: "x")
+        c.box(62, 42, 9, 9, Palette.buttonDown, glyph: "-")
+        // The bottom: a tile, the left corner with ADD REM SEL MISC, the right corner with LIST, the mini transport
+        // and the time display.
+        c.fill(179, 0, 25, 38, Palette.body)
+        c.fill(179, 37, 25, 1, Palette.bodyDark)
+        c.fill(0, 72, 125, 38, Palette.body)
+        c.fill(0, 72, 1, 38, Palette.bodyLight)
+        c.fill(0, 109, 125, 1, Palette.bodyDark)
+        for (x, label) in [(14, "add"), (43, "rem"), (72, "sel"), (101, "misc")] {
+            c.fill(x, 80, 22, 18, Palette.button)
+            c.bevel(x, 80, 22, 18, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.text(label, x + max((22 - label.count * 5) / 2, 0) + (label.count < 4 ? 1 : 0), 86, Palette.glyph,
+                   background: Palette.button)
+        }
+        c.fill(126, 72, 150, 38, Palette.body)
+        c.fill(126, 109, 150, 1, Palette.bodyDark)
+        c.fill(275, 72, 1, 38, Palette.bodyDark)
+        c.fill(126 + 106, 80, 22, 18, Palette.button)
+        c.bevel(126 + 106, 80, 22, 18, light: Palette.bodyLight, dark: Palette.bodyDark)
+        c.text("list", 126 + 106 + 1, 86, Palette.glyph, background: Palette.button)
+        c.fill(126 + 5, 72 + 8, 92, 10, Palette.display)
+        c.fill(126 + 64, 72 + 21, 30, 10, Palette.display)
+        for i in 0 ..< 6 {
+            let x = 126 + 3 + i * 10, y = 72 + 22
+            c.fill(x, y, 10, 10, Palette.button)
+            c.bevel(x, y, 10, 10, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.miniIcon(i, x + 5, y + 5, Palette.glyph)
+        }
+        // The resize grip.
+        for d in 0 ..< 3 { c.fill(126 + 140 + d * 3, 72 + 34 - d * 3, 2, 2 + d * 3, Palette.bodyLight) }
+    }
+
     static func text(_ c: Canvas) {
         c.fill(0, 0, 155, 18, Palette.display)
         for (char, (row, column)) in MainSprites.textFont {
@@ -343,6 +402,18 @@ final class Canvas {
         default:
             for r in 0 ..< 4 { fill(cx - r, cy - 4 + r, 2 * r + 1, 1, colour) }
             fill(cx - 4, cy + 2, 9, 2, colour)
+        }
+    }
+
+    /// The mini transport's icons, 5 pixels across, centred on (cx, cy).
+    func miniIcon(_ i: Int, _ cx: Int, _ cy: Int, _ colour: RGB) {
+        switch i {
+        case 0: fill(cx - 2, cy - 2, 1, 5, colour); for k in 0 ..< 3 { fill(cx + 1 - k, cy - k, 1, 2 * k + 1, colour) }
+        case 1: for k in 0 ..< 3 { fill(cx - 1 + k, cy - 2 + k, 1, 5 - 2 * k, colour) }
+        case 2: fill(cx - 2, cy - 2, 2, 5, colour); fill(cx + 1, cy - 2, 2, 5, colour)
+        case 3: fill(cx - 2, cy - 2, 5, 5, colour)
+        case 4: for k in 0 ..< 3 { fill(cx - 2 + k, cy - 2 + k, 1, 5 - 2 * k, colour) }; fill(cx + 2, cy - 2, 1, 5, colour)
+        default: for k in 0 ..< 3 { fill(cx - k, cy - 2 + k, 2 * k + 1, 1, colour) }; fill(cx - 2, cy + 2, 5, 1, colour)
         }
     }
 

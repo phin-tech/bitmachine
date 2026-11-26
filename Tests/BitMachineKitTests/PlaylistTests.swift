@@ -100,6 +100,39 @@ private func tracks(_ titles: String...) -> [Track] {
         #expect(loaded.entries.allSatisfy { $0.unavailable == nil })
     }
 
+    @Test func sortingReversingAndRandomizingKeepTheCurrentEntry() {
+        var playlist = Playlist(seed: 3)
+        let e = playlist.append(tracks("c", "a", "d", "b"))
+        playlist.select(e[2].id)
+        playlist.sort { $0.title < $1.title }
+        #expect(playlist.entries.map(\.track.title) == ["a", "b", "c", "d"])
+        playlist.reverse()
+        #expect(playlist.entries.map(\.track.title) == ["d", "c", "b", "a"])
+        playlist.randomize()
+        #expect(Set(playlist.entries.map(\.track.title)) == ["a", "b", "c", "d"])
+        #expect(playlist.currentEntry?.track.title == "d")
+    }
+
+    @Test func removingUnavailableTracks() {
+        var playlist = Playlist(seed: 1)
+        let e = playlist.append(tracks("a", "b", "c"))
+        playlist.markUnavailable(e[0].id, reason: "x")
+        playlist.markUnavailable(e[2].id, reason: "x")
+        playlist.removeUnavailable()
+        #expect(playlist.entries.map(\.track.title) == ["b"])
+        #expect(playlist.currentEntry?.track.title == "b")
+    }
+
+    @Test func totalDuration() {
+        var playlist = Playlist(seed: 1)
+        let e = playlist.append([Track(source: .appleMusic(id: "1"), title: "a", duration: 60),
+                                 Track(source: .appleMusic(id: "2"), title: "b", duration: 90),
+                                 Track(source: .appleMusic(id: "3"), title: "c")])
+        #expect(playlist.totalDuration().seconds == 150)
+        #expect(!playlist.totalDuration().complete)
+        #expect(playlist.totalDuration(of: [e[1].id]) == (90, true))
+    }
+
     @Test func displayTitle() {
         #expect(Track(source: .appleMusic(id: "1"), title: "One More Time", artist: "Daft Punk").displayTitle
             == "Daft Punk - One More Time")
