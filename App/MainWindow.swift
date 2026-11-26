@@ -108,6 +108,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         case .equalizer: AppDelegate.shared.toggleEqualizer(nil)
         case .playlist: AppDelegate.shared.togglePlaylist(nil)
         case .time: player.state.showsRemaining.toggle()
+        // While a Station plays, the visualizer area switches between the tuner and the analyzer.
+        case .visualizer: if player.state.isLive { player.state.showsTuner.toggle() }
         case .titleBar, .volume, .balance, .position: break
         }
     }
@@ -117,6 +119,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         menu.addItem(withTitle: "Open Skin…", action: #selector(AppDelegate.openSkin(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Use Default Skin", action: #selector(AppDelegate.useDefaultSkin(_:)), keyEquivalent: "")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Radio", action: #selector(AppDelegate.toggleRadio(_:)), keyEquivalent: "")
         let double = menu.addItem(withTitle: "Double Size", action: #selector(AppDelegate.toggleDoubleSize(_:)),
                                   keyEquivalent: "")
         double.state = isDoubleSize ? .on : .off
@@ -212,6 +215,10 @@ final class MainWindowView: NSView {
         let control = MainWindowLayout.control(at: point, windowshade: controller.state.isWindowshade)
         tracking = control
         switch control {
+        case .visualizer? where !controller.state.isLive:
+            // The analyzer is only a control while a Station plays; otherwise it drags, as it always did.
+            window?.performDrag(with: event)
+            tracking = nil
         case .titleBar?:
             if event.clickCount == 2 {
                 controller.toggleWindowshade()

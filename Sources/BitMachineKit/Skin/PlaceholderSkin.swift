@@ -63,7 +63,7 @@ public enum PlaceholderSkin {
         case .eqmain: equalizer(c)
         case .eqEx: equalizerExtras(c)
         case .pledit: playlist(c)
-        case .gen: c.fill(0, 0, w, h, Palette.body)
+        case .gen: gen(c)
         }
         return c.image()
     }
@@ -315,6 +315,65 @@ public enum PlaceholderSkin {
         }
         // The resize grip.
         for d in 0 ..< 3 { c.fill(126 + 140 + d * 3, 72 + 34 - d * 3, 2, 2 + d * 3, Palette.bodyLight) }
+    }
+
+    /// The generic window (the Radio Window's frame): title bar pieces focused (y 0) and not (y 21), sides, bottom,
+    /// a pressed close button, and A to Z for titles at y 88 and 96, a pixel of `bodyDark` between letters.
+    static func gen(_ c: Canvas) {
+        for (y, band) in [(0, Palette.accent), (21, Palette.accentDim)] {
+            for (i, x) in [0, 26, 52, 78, 104, 130].enumerated() {
+                c.fill(x, y, 25, 14, band)
+                c.fill(x, y, 25, 1, Palette.bodyLight)
+                c.fill(x, y + 14, 25, 6, Palette.body)
+                c.fill(x, y + 19, 25, 1, Palette.bodyDark)
+                // Grip lines either side of the title, as on the other title bars' empty stretches.
+                let grip: ClosedRange<Int>? = switch i {
+                case 0: 3 ... 24
+                case 1: 0 ... 21
+                case 3: 3 ... 24
+                case 4: 0 ... 24
+                case 5: 0 ... 11
+                default: nil
+                }
+                if let grip {
+                    for line in [4, 7, 10] { c.fill(x + grip.lowerBound, y + line, grip.count, 1, Palette.bodyLight) }
+                }
+                if i == 0 { c.fill(x, y, 1, 20, Palette.bodyLight) }
+                if i == 5 {
+                    c.fill(x + 24, y, 1, 20, Palette.bodyDark)
+                    c.box(x + 14, y + 3, 9, 9, Palette.button, glyph: "x")
+                }
+            }
+        }
+        c.fill(0, 42, 125, 14, Palette.body)
+        c.fill(0, 57, 125, 14, Palette.body)
+        c.fill(127, 72, 25, 14, Palette.body)
+        for (x, y, w) in [(0, 42, 125), (0, 57, 125), (127, 72, 25)] {
+            c.fill(x, y, w, 1, Palette.bodyLight)
+            c.fill(x, y + 13, w, 1, Palette.bodyDark)
+        }
+        c.fill(0, 42, 1, 14, Palette.bodyLight)
+        c.fill(124, 57, 1, 14, Palette.bodyDark)
+        // The sides, with the content's edge drawn on the inside.
+        for (x, y, w, h) in [(127, 42, 11, 29), (158, 42, 11, 24)] {
+            c.fill(x, y, w, h, Palette.body)
+            c.fill(x, y, 1, h, Palette.bodyLight)
+            c.fill(x + w - 1, y, 1, h, Palette.bodyDark)
+        }
+        for (x, y, w, h) in [(139, 42, 8, 29), (170, 42, 8, 24)] {
+            c.fill(x, y, w, h, Palette.body)
+            c.fill(x, y, 1, h, Palette.bodyLight)
+            c.fill(x + w - 1, y, 1, h, Palette.bodyDark)
+        }
+        c.box(148, 42, 9, 9, Palette.buttonDown, glyph: "x")
+        for (y, band) in [(88, Palette.accent), (96, Palette.accentDim)] {
+            c.fill(0, y, 194, 7, Palette.bodyDark)
+            for (i, letter) in GenSprites.letters.enumerated() {
+                let x = 1 + i * 5
+                c.fill(x, y, 4, 7, band)
+                c.glyph(letter, x, y + 1, Palette.glyph)
+            }
+        }
     }
 
     static func text(_ c: Canvas) {

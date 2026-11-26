@@ -12,9 +12,11 @@ public final class Skin: @unchecked Sendable {
     public let playlistColors: PlaylistColors
     /// Window shapes from `region.txt`, by section (`Normal`, `WindowShade`, `Equalizer`, `EqualizerWS`).
     public let regions: [String: [[CGPoint]]]
-    private let fallback: Skin?
+    let fallback: Skin?
     private var cache: [Sprite: CGImage] = [:]
-    private let lock = NSLock()
+    /// `gen.bmp`'s title letters, measured once (RadioWindow.swift).
+    var letterCache: [String: [Character: Sprite]] = [:]
+    let lock = NSLock()
 
     init(name: String, sheets: [SpriteSheet: CGImage], visualizerColors: [RGB], playlistColors: PlaylistColors,
          regions: [String: [[CGPoint]]], fallback: Skin?) {
@@ -28,6 +30,8 @@ public final class Skin: @unchecked Sendable {
 
     /// The sheets this Skin has itself, without its fallback.
     public var ownSheets: Set<SpriteSheet> { Set(sheets.keys) }
+
+    func ownSheet(_ sheet: SpriteSheet) -> CGImage? { sheets[sheet] }
 
     /// The sprite's image: from this Skin's sheet if the sheet has it, else from the fallback.
     public func image(_ sprite: Sprite) -> CGImage? {

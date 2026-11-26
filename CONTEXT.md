@@ -1,13 +1,13 @@
 # BitMachine
 
-A Mac music player in the classic skinnable-desktop-player tradition that plays Apple Music, local audio files and self-hosted music servers.
+A Mac music player in the classic skinnable-desktop-player tradition that plays Apple Music, local audio files, self-hosted music servers and internet radio.
 
 ## Language
 
 ### Sources
 
 **Source**:
-Where a Track's audio comes from: Apple Music, a Local File or a Server.
+Where a Track's audio comes from: Apple Music, a Local File, a Server or a Station.
 _Avoid_: provider, backend, service
 
 **Apple Music Track**:
@@ -29,6 +29,26 @@ _Avoid_: Navidrome (as a generic term), remote library, instance
 **Server Track**:
 A Track whose audio is streamed from a Server.
 _Avoid_: remote track, stream
+
+**Station**:
+An internet radio stream that is live: it never ends, has no duration and can't be seeked. In the Playlist, a Station is a Track like any other.
+_Avoid_: channel, radio (for one station), stream (as the domain term)
+
+**Station Directory**:
+The public list of internet radio Stations (radio-browser.info) that BitMachine searches.
+_Avoid_: radio browser, catalog (that's Apple Music's)
+
+**Now Playing**:
+What a Station says is on right now, which changes as it plays. It belongs to the moment, not to the Station.
+_Avoid_: track title, song (for what a Station is playing)
+
+**Frequency**:
+A made-up FM frequency (87.5 to 107.9) that a Station always gets, shown on the Tuner for the look of a radio. Two Stations can share one.
+_Avoid_: channel number, ID
+
+**Preset**:
+One of six buttons in the Radio Window that each hold a Station to tune to in one click.
+_Avoid_: favourite, bookmark
 
 **Track**:
 One playable piece of audio from any Source.
@@ -87,6 +107,14 @@ _Avoid_: EQ panel
 **Playlist Window**:
 The skinned window that shows and edits the Playlist. It is a view of the Playlist, not the Playlist itself.
 _Avoid_: playlist (when the window is meant), queue view
+
+**Radio Window**:
+The skinned window for finding Stations in the Station Directory and keeping them on Presets.
+_Avoid_: radio browser, station list
+
+**Tuner**:
+What the Main Window's visualizer area shows while a Station plays: its Frequency, the Preset it's on and a signal meter. The position bar becomes the tuning dial.
+_Avoid_: radio mode, LCD
 
 **Library Window**:
 The window for finding Tracks to add to the Playlist: it searches the Apple Music Catalog and browses the Apple Music Library and Local Files. It follows the Skin's colors, but its layout is BitMachine's own.

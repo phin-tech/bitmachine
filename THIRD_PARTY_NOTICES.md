@@ -5,7 +5,9 @@
 BitMachine's classic skin support (`Sources/BitMachineKit/Skin/Sprites.swift` and the Main Window layout in
 `Sources/BitMachineKit/Skin/MainWindow.swift`) uses the sprite coordinates and window positions documented by
 [Webamp](https://github.com/captbaritone/webamp) (`packages/webamp/js/skinSprites.ts` and
-`packages/webamp/css/main-window.css`, at commit 99a31e2).
+`packages/webamp/css/main-window.css`, at commit 99a31e2). The Radio Window's frame
+(`Sources/BitMachineKit/Skin/RadioWindow.swift`) uses Webamp's generic window sprites, title letter measuring and layout
+(`skinSprites.ts`, `skinParser.js` and `css/gen-window.css`, at the same commit).
 
 The MIT License (MIT)
 

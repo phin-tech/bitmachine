@@ -57,6 +57,10 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSAppleMusicUsageDescription: BitMachine plays and searches Apple Music for you.
         NSAudioCaptureUsageDescription: BitMachine listens to Apple Music playback to drive its visualizer, equalizer and volume.
+        # Most internet radio Stations stream over plain http from hosts the listener picks, so App Transport
+        # Security can't list them; the Station Directory and everything else use https anyway.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         # Sparkle: the appcast is an asset of the newest GitHub release (`just appcast` uploads it), and
         # updates must be signed by the private key in Infisical (SPARKLE_PRIVATE_KEY, the phin-tech-store project).
         SUFeedURL: https://github.com/phin-tech/bitmachine/releases/latest/download/appcast.xml

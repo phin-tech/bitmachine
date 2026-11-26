@@ -2,7 +2,7 @@ import BitMachineKit
 import Foundation
 
 /// Owns the Playlist and what the Main Window shows, and hands the current Track to the engine for its Source
-/// (ADR 0001). Only Apple Music has an engine so far; other Sources' Tracks are marked unavailable for now.
+/// (ADR 0001). Apple Music and Stations have engines so far; other Sources' Tracks are marked unavailable for now.
 @MainActor
 final class Player {
     private(set) var playlist = Playlist() {
@@ -79,6 +79,34 @@ final class Player {
     let appleMusic = AppleMusicEngine()
     let output = AudioOutput()
     private(set) lazy var router = AppleMusicRouter(output: output)
+    private(set) lazy var stations = StationEngine(output: output)
+    let directory = StationDirectory()
+
+    /// The Stations on the Radio Window's preset buttons, saved.
+    var presets = Player.savedPresets() {
+        didSet {
+            guard presets != oldValue else { return }
+            if let data = try? JSONEncoder().encode(presets) { UserDefaults.standard.set(data, forKey: Self.presetsKey) }
+            if let entry = playlist.currentEntry { refreshTuner(entry) }
+            onPresetsChange?()
+        }
+    }
+
+    var onPresetsChange: (() -> Void)?
+    private static let presetsKey = "radioPresets"
+
+    private static func savedPresets() -> RadioPresets {
+        guard let data = UserDefaults.standard.data(forKey: presetsKey),
+              let presets = try? JSONDecoder().decode(RadioPresets.self, from: data) else { return RadioPresets() }
+        return presets
+    }
+
+    /// What the Station playing says is on now (its ICY StreamTitle); nil for anything else.
+    private(set) var nowPlaying: String?
+    /// When the Station playing was tuned in, for the time display.
+    private var tunedIn: Date?
+    /// Reconnections since the Station last played for a while.
+    private var reconnects = 0
     private var timer: Timer?
     private var visualizerTimer: Timer?
     private let analyzer = SpectrumAnalyzer()
@@ -97,6 +125,14 @@ final class Player {
         output.balance = state.balance
         restorePlaylist()
         appleMusic.onEnded = { [weak self] in self?.trackEnded() }
+        stations.onTitle = { [weak self] title in self?.heard(title: title) }
+        stations.onInfo = { [weak self] info in
+            guard let self else { return }
+            self.state.kbps = info.kbps
+            self.state.khz = info.khz
+            self.state.stereo = info.stereo
+        }
+        stations.onDropped = { [weak self] error in self?.stationDropped(error) }
         output.volume = state.volume
         applyEqualizer()
         router.onStateChange = { [weak self] state in
@@ -115,7 +151,7 @@ final class Player {
 
     /// The analyzer follows what BitMachine's engine plays; paused or stopped, its bars fall away.
     private func animateVisualizer() {
-        let hearing = state.playback == .playing && router.state == .routed
+        let hearing = state.playback == .playing && (router.state == .routed || stations.isPlaying)
         let levels: [Double]
         if hearing {
             let recent = output.recentSamples()
@@ -131,7 +167,11 @@ final class Player {
     private func tick() {
         var next = state
         next.titleScroll += 5
-        if next.playback == .playing, next.seeking == nil { next.elapsed = appleMusic.elapsed }
+        if next.playback == .playing, next.seeking == nil {
+            next.elapsed = next.isLive ? tunedIn.map { Date().timeIntervalSince($0) } ?? 0 : appleMusic.elapsed
+        }
+        if next.tuner != nil { next.tuner?.signal = stations.signal }
+        if let tunedIn, Date().timeIntervalSince(tunedIn) > 60 { reconnects = 0 }
         state = next
     }
 
@@ -214,7 +254,11 @@ final class Player {
             else if let current = playlist.current { play(current) }
         case .pause:
             switch state.playback {
-            case .playing: appleMusic.pause(); state.playback = .paused
+            case .playing:
+                // A Station is live: paused, it lets go of the stream, and Play tunes in again.
+                // Bumping the generation lets a Station still connecting go quietly, not as a failure.
+                if state.isLive { generation += 1; stations.stop() } else { appleMusic.pause() }
+                state.playback = .paused
             case .paused: resume()
             case .stopped: break
             }
@@ -222,7 +266,7 @@ final class Player {
         case .next:
             if playlist.advance() { startOrShow() }
         case .previous:
-            if state.playback != .stopped, state.elapsed > 3 { seek(to: 0) }
+            if state.playback != .stopped, state.elapsed > 3, !state.isLive { seek(to: 0) }
             else if playlist.goBack() { startOrShow() }
         case .eject:
             AppDelegate.shared.showLibrary(nil)
@@ -235,6 +279,7 @@ final class Player {
     }
 
     func play(_ id: PlaylistEntry.ID) {
+        if id != playlist.current { reconnects = 0 }
         playlist.select(id)
         guard let entry = playlist.currentEntry else { return }
         generation += 1
@@ -246,8 +291,16 @@ final class Player {
             do {
                 switch entry.track.source {
                 case .appleMusic:
+                    // One Source at a time feeds the output (it has one input).
+                    stations.stop()
                     try await appleMusic.play(entry.track)
                     if generation == self.generation { await router.start() }
+                case let .station(url):
+                    appleMusic.stop()
+                    router.stop()
+                    try await stations.play(url)
+                    guard generation == self.generation else { return }
+                    tunedIn = Date()
                 case .localFile, .server: throw PlayError.noEngine
                 }
                 guard generation == self.generation else { return }
@@ -255,6 +308,7 @@ final class Player {
             } catch {
                 guard generation == self.generation else { return }
                 playlist.markUnavailable(entry.id, reason: error.localizedDescription)
+                NSLog("BitMachine: couldn't play %@: %@", entry.track.displayTitle, String(describing: error))
                 state.title = "Skipped: \(entry.track.displayTitle) (\(error.localizedDescription))"
                 if playlist.advance() { play(playlist.current!) } else { stop(keepTitle: true) }
             }
@@ -267,6 +321,7 @@ final class Player {
     }
 
     private func resume() {
+        if state.isLive, let current = playlist.current { play(current); return }
         state.playback = .playing
         Task { try? await appleMusic.resume() }
     }
@@ -275,6 +330,8 @@ final class Player {
         generation += 1
         appleMusic.stop()
         router.stop()
+        stations.stop()
+        tunedIn = nil
         state.playback = .stopped
         state.elapsed = 0
         if !keepTitle { showCurrent() }
@@ -285,6 +342,8 @@ final class Player {
     }
 
     private func seek(to time: TimeInterval) {
+        // A Station is live: there's nowhere to seek to.
+        guard !state.isLive else { return }
         appleMusic.seek(to: time)
         state.elapsed = time
     }
@@ -304,13 +363,82 @@ final class Player {
     }
 
     private func show(_ entry: PlaylistEntry) {
-        let number = (playlist.index(of: entry.id) ?? 0) + 1
-        state.title = "\(number). \(entry.track.displayTitle)" + (entry.track.duration.map { " (\(Self.clock($0)))" } ?? "")
+        nowPlaying = nil
+        showTitle(entry)
         state.titleScroll = 0
         state.duration = entry.track.duration ?? 0
-        // Apple Music streams 256 kbps AAC at 44.1 kHz.
+        // Apple Music streams 256 kbps AAC at 44.1 kHz; a Station says what it sends once it's tuned in.
         state.kbps = entry.track.source.isAppleMusic ? 256 : nil
         state.khz = entry.track.source.isAppleMusic ? 44 : nil
+        if entry.track.source.isAppleMusic { state.stereo = true }
+        refreshTuner(entry)
+    }
+
+    /// "3. Station Name" and, for a Station, its Frequency and what's on: "3. 94.3 FM Groove Salad - Artist - Song".
+    private func showTitle(_ entry: PlaylistEntry) {
+        let number = (playlist.index(of: entry.id) ?? 0) + 1
+        if case let .station(url) = entry.track.source {
+            let on = nowPlaying.flatMap { $0.isEmpty ? nil : " - \($0)" } ?? ""
+            state.title = "\(number). \(Frequency(for: url)) FM \(entry.track.title)\(on)"
+        } else {
+            state.title = "\(number). \(entry.track.displayTitle)" + (entry.track.duration.map { " (\(Self.clock($0)))" } ?? "")
+        }
+    }
+
+    private func refreshTuner(_ entry: PlaylistEntry) {
+        guard case let .station(url) = entry.track.source else { state.tuner = nil; return }
+        let preset = presets.slot(of: url).map { $0 + 1 }
+        state.tuner = TunerReadout(frequency: Frequency(for: url), signal: state.tuner?.signal ?? 0, preset: preset)
+    }
+
+    private func heard(title: String) {
+        guard let entry = playlist.currentEntry, entry.track.source.isStation else { return }
+        nowPlaying = title
+        showTitle(entry)
+    }
+
+    /// The stream stopped by itself: tune in again, waiting a little longer each time, and after three tries in a
+    /// row that don't hold for a minute, stop and say the Station is lost. It stays playable: it may be back later.
+    private func stationDropped(_ error: Error?) {
+        guard state.playback == .playing, let entry = playlist.currentEntry,
+              case let .station(url) = entry.track.source else { return }
+        generation += 1
+        let generation = generation
+        tunedIn = nil
+        Task {
+            var lastError = error
+            while reconnects < 3 {
+                reconnects += 1
+                state.title = "Reconnecting to \(entry.track.title)…"
+                state.titleScroll = 0
+                try? await Task.sleep(for: .seconds(Double(reconnects)))
+                guard generation == self.generation else { return }
+                do {
+                    try await stations.play(url)
+                    guard generation == self.generation else { return }
+                    tunedIn = Date()
+                    showTitle(entry)
+                    return
+                } catch {
+                    guard generation == self.generation else { return }
+                    lastError = error
+                }
+            }
+            reconnects = 0
+            stop(keepTitle: true)
+            state.title = "Lost \(entry.track.title)" + (lastError.map { " (\($0.localizedDescription))" } ?? "")
+            state.titleScroll = 0
+        }
+    }
+
+    /// Plays a Station from the Radio Window: adds it to the Playlist (once) and tunes in.
+    func tune(to station: Station) {
+        if let existing = playlist.entries.first(where: { $0.track.source == .station(station.url) }) {
+            play(existing.id)
+        } else {
+            add([station.track], play: true)
+        }
+        Task { await directory.countPlay(of: station) }
     }
 
     static func clock(_ seconds: TimeInterval) -> String {

@@ -1,6 +1,6 @@
 # BitMachine
 
-A skinnable music player for Apple Music, your files and your Navidrome server
+A skinnable music player for Apple Music, internet radio, your files and your Navidrome server
 
 ## Install
 
