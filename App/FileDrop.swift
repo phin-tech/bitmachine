@@ -12,8 +12,10 @@ enum FileDrop {
         return (read as? [URL]) ?? []
     }
 
-    /// Copy when anything dropped could hold music: an audio file or a folder.
+    /// Copy when anything dropped could hold music: an audio file, a folder or a Playlist File.
     static func operation(_ info: NSDraggingInfo) -> NSDragOperation {
-        urls(info).contains { $0.hasDirectoryPath || LocalFiles.isAudio($0) } ? .copy : []
+        urls(info).contains {
+            $0.hasDirectoryPath || LocalFiles.isAudio($0) || PlaylistFile.extensions.contains($0.pathExtension.lowercased())
+        } ? .copy : []
     }
 }

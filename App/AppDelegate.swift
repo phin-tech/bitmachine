@@ -1,4 +1,5 @@
 import AppKit
+import MusicKit
 import BitMachineKit
 import UniformTypeIdentifiers
 
@@ -100,6 +101,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch {
                     NSLog("BitMachine: BITMACHINE_APPLE_PLAYLIST failed: \(error)")
                 }
+            }
+        }
+        // BITMACHINE_APPLE_SAVE="<name>|<search>" saves the first two songs found as a new Apple Music Playlist.
+        if let parts = ProcessInfo.processInfo.environment["BITMACHINE_APPLE_SAVE"]?.components(separatedBy: "|"),
+           parts.count == 2 {
+            Task {
+                do {
+                    let found = Array(try await player.appleMusic.search(parts[1]).prefix(2))
+                    let saved = try await player.appleMusic.createPlaylist(named: parts[0], of: found)
+                    NSLog("BitMachine: saved %d songs as %@", saved, parts[0])
+                } catch {
+                    NSLog("BitMachine: BITMACHINE_APPLE_SAVE failed: \(error)")
+                    try? "\(error)".write(toFile: NSTemporaryDirectory() + "bitmachine-apple-save-error.txt",
+                                          atomically: true, encoding: .utf8)
+                }
+            }
+        }
+        // BITMACHINE_APPLE_CHECK="<name>" writes that Apple Music Playlist's songs, as the Apple Music API has them,
+        // to bitmachine-apple-check.txt in the temporary folder.
+        if let name = ProcessInfo.processInfo.environment["BITMACHINE_APPLE_CHECK"] {
+            Task {
+                var out = ""
+                do {
+                    func get(_ path: String) async throws -> [String: Any] {
+                        let request = URLRequest(url: URL(string: "https://api.music.apple.com/" + path)!)
+                        let data = try await MusicDataRequest(urlRequest: request).response().data
+                        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+                    }
+                    let lists = (try await get("v1/me/library/playlists?limit=100")["data"] as? [[String: Any]]) ?? []
+                    let matching = lists.filter { (($0["attributes"] as? [String: Any])?["name"] as? String) == name }
+                    out += "\(lists.count) playlists, \(matching.count) named \(name)\n"
+                    for list in matching {
+                        let id = list["id"] as? String ?? ""
+                        let songs = (try await get("v1/me/library/playlists/\(id)/tracks")["data"] as? [[String: Any]]) ?? []
+                        out += "\(id): " + songs.compactMap { ($0["attributes"] as? [String: Any])?["name"] as? String }
+                            .joined(separator: ", ") + "\n"
+                    }
+                } catch {
+                    out += "failed: \(error)\n"
+                }
+                try? out.write(toFile: NSTemporaryDirectory() + "bitmachine-apple-check.txt", atomically: true, encoding: .utf8)
             }
         }
         // BITMACHINE_SERVER="<address>|<user>|<password>" signs in to a Server at launch, and

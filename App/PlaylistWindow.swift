@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import BitMachineKit
 
 /// The Playlist Window: the Playlist, drawn in the Skin's frame and colours, with its menus and mini transport.
@@ -14,6 +15,7 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
     private var anchor: Int?
 
     private static let sizeKey = "playlistSize"
+    private static let shadeKey = "playlistShade"
 
     var isDoubleSize = false {
         didSet { resize(to: state.size) }
@@ -40,6 +42,7 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         if let saved = UserDefaults.standard.string(forKey: Self.sizeKey) {
             state.size = PlaylistLayout.snapped(NSSizeFromString(saved))
         }
+        state.isWindowshade = UserDefaults.standard.bool(forKey: Self.shadeKey)
         player.observePlaylist { [weak self] in self?.refresh() }
         player.observeState { [weak self] in self?.refreshTimes() }
         refresh()
@@ -86,6 +89,16 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         state.runningTime = "\(PlaylistLayout.clock(chosen.seconds))/\(PlaylistLayout.clock(total.seconds))\(total.complete ? "" : "+")"
         let playing = player.state
         state.miniTime = playing.playback == .stopped ? "" : PlaylistLayout.clock(playing.elapsed)
+        if let entry = player.playlist.currentEntry {
+            let number = (player.playlist.index(of: entry.id) ?? 0) + 1
+            state.shadeTitle = "\(number). \(entry.track.displayTitle)"
+            let length = entry.track.duration.map(PlaylistLayout.clock) ?? ""
+            state.shadeTime = playing.playback == .stopped ? length
+                : PlaylistLayout.clock(playing.elapsed) + (length.isEmpty ? "" : "/" + length)
+        } else {
+            state.shadeTitle = ""
+            state.shadeTime = ""
+        }
         redraw()
     }
 
@@ -98,11 +111,14 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
     }
 
     func resize(to size: CGSize) {
-        state.size = PlaylistLayout.snapped(size)
+        // Rolled up, only the width changes.
+        let wanted = state.isWindowshade ? CGSize(width: size.width, height: state.size.height) : size
+        state.size = PlaylistLayout.snapped(wanted)
         UserDefaults.standard.set(NSStringFromSize(state.size), forKey: Self.sizeKey)
         var frame = window.frame
         let top = frame.maxY
-        frame.size = CGSize(width: state.size.width * scale, height: state.size.height * scale)
+        let drawn = state.drawnSize
+        frame.size = CGSize(width: drawn.width * scale, height: drawn.height * scale)
         frame.origin.y = top - frame.height
         AppDelegate.shared.dock.setFrame(window, frame)
         refresh()
@@ -183,8 +199,18 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         case .close: hide()
         case let .transport(button): player.press(button)
         case let .menu(menu): show(menu)
-        case .shade, .titleBar, .list, .scrollbar, .resize: break
+        case .shade: toggleWindowshade()
+        case .titleBar, .list, .scrollbar, .resize: break
         }
+    }
+
+    var isWindowshade: Bool { state.isWindowshade }
+
+    /// Rolls the window up to a bar showing the current Track, or back down.
+    func toggleWindowshade() {
+        state.isWindowshade.toggle()
+        UserDefaults.standard.set(state.isWindowshade, forKey: Self.shadeKey)
+        resize(to: state.size)
     }
 
     /// Asks for audio files, or folders of them, and adds them to the end of the Playlist.
@@ -245,14 +271,77 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
             item("Randomize") { [weak self] in self?.player.edit { $0.randomize() } }
         case .list:
             item("New Playlist", enabled: !entries.isEmpty) { [weak self] in self?.player.removeAll() }
+            item("Open Playlist File…") { [weak self] in self?.openPlaylistFile() }
+            item("Save Playlist File…", enabled: !entries.isEmpty) { [weak self] in self?.savePlaylistFile() }
             if let reference = player.playlist.serverPlaylist {
                 menu.addItem(.separator())
                 item("Save to Server Playlist “\(reference.name)”") { [weak self] in self?.saveToServer() }
             }
             item("Open a Server Playlist…") { AppDelegate.shared.showLibrary(nil) }
+            menu.addItem(.separator())
+            item("Save as Apple Music Playlist…", enabled: entries.contains { $0.track.source.isAppleMusic }) {
+                [weak self] in self?.saveToAppleMusic()
+            }
         }
         let rect = PlaylistLayout.menu(which, state.size)
         menu.popUp(positioning: nil, at: CGPoint(x: rect.minX * scale, y: rect.minY * scale), in: view)
+    }
+
+    /// Saves the Playlist as a new Apple Music Playlist; Tracks from other Sources are left out, with a notice.
+    private func saveToAppleMusic() {
+        let ask = NSAlert()
+        ask.messageText = "Save as an Apple Music Playlist"
+        ask.informativeText = "BitMachine makes a new playlist in your Apple Music library with the Playlist's Apple "
+            + "Music songs, in this order."
+        let field = NSTextField(frame: CGRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = player.playlist.serverPlaylist?.name ?? "BitMachine Playlist"
+        ask.accessoryView = field
+        ask.addButton(withTitle: "Save")
+        ask.addButton(withTitle: "Cancel")
+        ask.window.initialFirstResponder = field
+        guard ask.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let tracks = player.playlist.entries.map(\.track)
+        Task {
+            let alert = NSAlert()
+            do {
+                let saved = try await player.appleMusic.createPlaylist(named: name.isEmpty ? "BitMachine Playlist" : name,
+                                                                       of: tracks)
+                let leftOut = tracks.count - saved
+                alert.messageText = "Saved “\(name)” to Apple Music"
+                alert.informativeText = "\(saved) song\(saved == 1 ? "" : "s")." + (leftOut == 0 ? "" :
+                    " \(leftOut) Track\(leftOut == 1 ? " isn't" : "s aren't") from Apple Music, so "
+                    + "\(leftOut == 1 ? "it was" : "they were") left out. They stay in your Playlist.")
+            } catch {
+                alert.messageText = "Couldn't save to Apple Music"
+                alert.informativeText = error.localizedDescription
+            }
+            alert.runModal()
+        }
+    }
+
+    private func openPlaylistFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = PlaylistFile.extensions.compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Its Tracks take the place of what's in the Playlist now."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try player.openPlaylistFile(url) } catch { show(error, doing: "open the Playlist File") }
+    }
+
+    private func savePlaylistFile() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "m3u8")].compactMap { $0 }
+        panel.nameFieldStringValue = (player.playlist.serverPlaylist?.name ?? "Playlist") + ".m3u8"
+        panel.message = "Other players can read its files and stations; BitMachine reads all of it."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try player.savePlaylistFile(to: url) } catch { show(error, doing: "save the Playlist File") }
+    }
+
+    private func show(_ error: Error, doing what: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't \(what)"
+        alert.informativeText = error.localizedDescription
+        alert.runModal()
     }
 
     private func saveToServer() {
@@ -360,13 +449,13 @@ final class PlaylistWindowView: NSView {
     override func draw(_: NSRect) {
         guard let image, let context = NSGraphicsContext.current?.cgContext, let controller else { return }
         context.saveGState()
+        defer { if !controller.isWindowshade { drawRows(controller, context) } }
         context.interpolationQuality = .none
         context.translateBy(x: 0, y: bounds.height)
         context.scaleBy(x: 1, y: -1)
         context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width) * scale,
                                        height: CGFloat(image.height) * scale))
         context.restoreGState()
-        drawRows(controller, context)
     }
 
     private func drawRows(_ controller: PlaylistWindowController, _ context: CGContext) {
@@ -424,12 +513,12 @@ final class PlaylistWindowView: NSView {
         window?.makeFirstResponder(self)
         let point = skinPoint(event)
         let size = controller.state.size
-        let control = PlaylistLayout.control(at: point, size: size)
+        let control = PlaylistLayout.control(at: point, size: size, windowshade: controller.isWindowshade)
         tracking = control
         switch control {
         case .titleBar?, nil:
             tracking = nil
-            startWindowDrag(event)
+            if event.clickCount == 2, control == .titleBar { controller.toggleWindowshade() } else { startWindowDrag(event) }
         case .list?:
             let row = PlaylistLayout.row(at: point.y, size: size, scroll: controller.state.scroll) ?? -1
             controller.click(row: row, modifiers: event.modifierFlags, count: event.clickCount)
@@ -466,7 +555,7 @@ final class PlaylistWindowView: NSView {
             controller.resize(to: CGSize(width: start.size.width + (mouse.x - start.mouse.x) / scale,
                                          height: start.size.height - (mouse.y - start.mouse.y) / scale))
         default:
-            let over = PlaylistLayout.control(at: point, size: size) == tracking
+            let over = PlaylistLayout.control(at: point, size: size, windowshade: controller.isWindowshade) == tracking
             controller.press(over ? tracking : nil)
         }
     }
@@ -481,7 +570,8 @@ final class PlaylistWindowView: NSView {
         switch tracking {
         case .list, .scrollbar, .resize: break
         default:
-            if PlaylistLayout.control(at: skinPoint(event), size: controller.state.size) == tracking {
+            if PlaylistLayout.control(at: skinPoint(event), size: controller.state.size,
+                                      windowshade: controller.isWindowshade) == tracking {
                 controller.perform(tracking)
             }
         }

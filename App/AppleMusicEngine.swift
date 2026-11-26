@@ -182,6 +182,39 @@ final class AppleMusicEngine {
         return (playlist.name, songs.map(Self.track))
     }
 
+    /// Makes a new Apple Music Playlist of these Tracks' songs, in order, through the Apple Music API (MusicKit's
+    /// own playlist calls aren't available on the Mac). Returns how many songs went in.
+    func createPlaylist(named name: String, of tracks: [Track]) async throws -> Int {
+        guard await Self.authorize() else { throw Failure.notAuthorized }
+        let songs: [[String: String]] = tracks.compactMap {
+            guard case let .appleMusic(id) = $0.source else { return nil }
+            // Library songs have "i." ids; the rest are the catalog's.
+            return ["id": id, "type": id.hasPrefix("i.") ? "library-songs" : "songs"]
+        }
+        let batches = stride(from: 0, to: songs.count, by: 100).map { Array(songs[$0 ..< min($0 + 100, songs.count)]) }
+        let created = try await appleMusicAPI("v1/me/library/playlists", body: [
+            "attributes": ["name": name, "description": "Made in BitMachine"],
+            "relationships": ["tracks": ["data": batches.first ?? []]],
+        ])
+        guard batches.count > 1 else { return songs.count }
+        guard let id = ((try? JSONSerialization.jsonObject(with: created)) as? [String: Any])
+            .flatMap({ ($0["data"] as? [[String: Any]])?.first?["id"] as? String }) else {
+            throw Failure.notFound
+        }
+        for batch in batches.dropFirst() {
+            _ = try await appleMusicAPI("v1/me/library/playlists/\(id)/tracks", body: ["data": batch])
+        }
+        return songs.count
+    }
+
+    private func appleMusicAPI(_ path: String, body: [String: Any]) async throws -> Data {
+        var request = URLRequest(url: URL(string: "https://api.music.apple.com/" + path)!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await MusicDataRequest(urlRequest: request).response().data
+    }
+
     private func song(id: String) async throws -> Song {
         if let song = songs[id] { return song }
         let found: Song?

@@ -60,3 +60,31 @@ import Testing
         #expect(image.width == 300 && image.height == 261)
     }
 }
+
+@Suite struct PlaylistWindowshadeTests {
+    @Test func rollsUpToABarWithTheTrackAndTime() throws {
+        var state = PlaylistWindowState()
+        state.size = CGSize(width: 300, height: 232)
+        state.isWindowshade = true
+        state.shadeTitle = "3. Somebody - A Song With A Very Long Title Indeed"
+        state.shadeTime = "1:02/3:45"
+        #expect(Int(state.drawnSize.height) == 14)
+        #expect(Int(state.drawnSize.width) == 300)
+        let image = try #require(SkinRenderer.renderPlaylistWindow(state, skin: PlaceholderSkin.make()))
+        #expect(image.height == 14)
+        let placed = PlaylistLayout.placements(for: state)
+        // The title is cut short before the time, which ends 30 pixels from the right.
+        let text = placed.filter { $0.origin.y == 4 }
+        #expect(Int(text.map(\.origin.x).max()!) + 5 == 300 - 30)
+        #expect(!placed.contains { $0.sprite == PlaylistSprites.leftTile })
+    }
+
+    @Test func itsButtonsAndGrip() {
+        let size = CGSize(width: 275, height: 232)
+        #expect(PlaylistLayout.control(at: CGPoint(x: 268, y: 6), size: size, windowshade: true) == .close)
+        #expect(PlaylistLayout.control(at: CGPoint(x: 258, y: 6), size: size, windowshade: true) == .shade)
+        #expect(PlaylistLayout.control(at: CGPoint(x: 250, y: 6), size: size, windowshade: true) == .resize)
+        #expect(PlaylistLayout.control(at: CGPoint(x: 100, y: 6), size: size, windowshade: true) == .titleBar)
+        #expect(PlaylistLayout.control(at: CGPoint(x: 100, y: 100), size: size, windowshade: true) == nil)
+    }
+}

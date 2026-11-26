@@ -233,11 +233,34 @@ final class Player {
     /// Adds audio files, and the audio files in folders (all the way down), as Local File Tracks; with `play`, the
     /// first of them starts.
     func addFiles(_ urls: [URL], play: Bool) {
+        // Playlist Files among them add what they list.
+        let lists = urls.filter { PlaylistFile.extensions.contains($0.pathExtension.lowercased()) }
+        let listed = lists.flatMap { (try? Self.readPlaylistFile($0)) ?? [] }
+        let others = urls.filter { !lists.contains($0) }
         Task {
-            let files = await Task.detached { LocalFiles.audioFiles(in: urls) }.value
-            guard !files.isEmpty else { return }
-            add(await LocalFiles.tracks(for: files), play: play)
+            let files = await Task.detached { LocalFiles.audioFiles(in: others) }.value
+            let tracks = listed + (files.isEmpty ? [] : await LocalFiles.tracks(for: files))
+            guard !tracks.isEmpty else { return }
+            add(tracks, play: play)
         }
+    }
+
+    // MARK: Playlist Files
+
+    static func readPlaylistFile(_ url: URL) throws -> [Track] {
+        let data = try Data(contentsOf: url)
+        // M3U8 is UTF-8; older M3U files from other players are often Latin-1.
+        let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+        return PlaylistFile.tracks(in: text, base: url.deletingLastPathComponent())
+    }
+
+    /// Opens a Playlist File in place of the Playlist.
+    func openPlaylistFile(_ url: URL) throws {
+        replacePlaylist(with: try Self.readPlaylistFile(url))
+    }
+
+    func savePlaylistFile(to url: URL) throws {
+        try PlaylistFile.text(for: playlist.entries.map(\.track)).write(to: url, atomically: true, encoding: .utf8)
     }
 
     func remove(_ ids: Set<PlaylistEntry.ID>) {

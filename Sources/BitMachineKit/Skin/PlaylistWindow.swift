@@ -18,6 +18,11 @@ public enum PlaylistSprites {
     public static let scrollHandleSelected = Sprite(.pledit, 61, 53, 8, 18)
     public static let closePressed = Sprite(.pledit, 52, 42, 9, 9)
     public static let shadePressed = Sprite(.pledit, 62, 42, 9, 9)
+    // Windowshade: a left end, a tile, and a right end that holds the buttons; the expand button pressed.
+    public static let shadeLeft = Sprite(.pledit, 72, 42, 25, 14)
+    public static let shadeTile = Sprite(.pledit, 72, 57, 25, 14)
+    public static func shadeRight(_ focused: Bool) -> Sprite { Sprite(.pledit, 99, focused ? 42 : 57, 50, 14) }
+    public static let expandPressed = Sprite(.pledit, 150, 42, 9, 9)
 }
 
 /// What the Playlist Window shows, apart from the list's text, which the app draws in a real font.
@@ -33,7 +38,15 @@ public struct PlaylistWindowState: Equatable, Sendable {
     public var runningTime = ""
     /// The current Track's time, beside the mini transport; empty when stopped.
     public var miniTime = ""
+    /// Rolled up to a 14-pixel bar showing the current Track and its time.
+    public var isWindowshade = false
+    /// In Windowshade: "3. Artist - Title" and "1:02/3:45".
+    public var shadeTitle = ""
+    public var shadeTime = ""
     public init() {}
+
+    /// The size drawn: the full window, or the Windowshade bar at its width.
+    public var drawnSize: CGSize { isWindowshade ? CGSize(width: size.width, height: PlaylistLayout.shadeHeight) : size }
 }
 
 public enum PlaylistMenu: Hashable, Sendable { case add, remove, select, misc, list }
@@ -48,6 +61,7 @@ public enum PlaylistLayout {
     public static let defaultSize = CGSize(width: 275, height: 232)
     public static let minimumSize = CGSize(width: 275, height: 116)
     public static let rowHeight: CGFloat = 13
+    public static let shadeHeight: CGFloat = 14
 
     /// The nearest size the frame's tiles allow.
     public static func snapped(_ size: CGSize) -> CGSize {
@@ -114,7 +128,16 @@ public enum PlaylistLayout {
     public static func runningTime(_ size: CGSize) -> CGPoint { CGPoint(x: size.width - 150 + 7, y: size.height - 38 + 10) }
     public static func miniTime(_ size: CGSize) -> CGPoint { CGPoint(x: size.width - 150 + 66, y: size.height - 38 + 23) }
 
-    public static func control(at p: CGPoint, size: CGSize) -> PlaylistControl? {
+    /// In Windowshade, the grip that changes the bar's width.
+    public static func shadeResize(_ size: CGSize) -> CGRect { CGRect(x: size.width - 29, y: 3, width: 9, height: 9) }
+
+    public static func control(at p: CGPoint, size: CGSize, windowshade: Bool = false) -> PlaylistControl? {
+        if windowshade {
+            if close(size).contains(p) { return .close }
+            if shade(size).contains(p) { return .shade }
+            if shadeResize(size).contains(p) { return .resize }
+            return p.y < shadeHeight ? .titleBar : nil
+        }
         if close(size).contains(p) { return .close }
         if shade(size).contains(p) { return .shade }
         for m in [PlaylistMenu.add, .remove, .select, .misc, .list] where menu(m, size).contains(p) { return .menu(m) }
@@ -130,6 +153,7 @@ public enum PlaylistLayout {
         var out: [MainWindowLayout.Placement] = []
         func put(_ s: Sprite, _ x: CGFloat, _ y: CGFloat) { out.append(.init(sprite: s, origin: CGPoint(x: x, y: y))) }
         let size = state.size, w = size.width, h = size.height, f = state.isFocused
+        if state.isWindowshade { return shadePlacements(for: state) }
 
         // The top: tiles across, the title centred over them, a corner at each end.
         var x: CGFloat = 25
@@ -161,6 +185,26 @@ public enum PlaylistLayout {
         return out
     }
 
+    private static func shadePlacements(for state: PlaylistWindowState) -> [MainWindowLayout.Placement] {
+        var out: [MainWindowLayout.Placement] = []
+        func put(_ s: Sprite, _ x: CGFloat, _ y: CGFloat) { out.append(.init(sprite: s, origin: CGPoint(x: x, y: y))) }
+        let size = state.size, w = size.width
+        var x: CGFloat = 25
+        while x < w - 50 { put(PlaylistSprites.shadeTile, x, 0); x += 25 }
+        put(PlaylistSprites.shadeLeft, 0, 0)
+        put(PlaylistSprites.shadeRight(state.isFocused), w - 50, 0)
+        if state.pressed == .close { put(PlaylistSprites.closePressed, close(size).minX, close(size).minY) }
+        if state.pressed == .shade { put(PlaylistSprites.expandPressed, shade(size).minX, shade(size).minY) }
+        // The time ends 30 pixels from the right; the title takes what's left, cut short to fit.
+        let timeX = w - 30 - CGFloat(state.shadeTime.count * 5)
+        let room = max(Int((timeX - 5 - 5) / 5), 0)
+        let title = state.shadeTitle.count > room ? String(state.shadeTitle.prefix(max(room - 1, 0))) + "…"
+            : state.shadeTitle
+        text(&out, title, at: CGPoint(x: 5, y: 4))
+        text(&out, state.shadeTime, at: CGPoint(x: timeX, y: 4))
+        return out
+    }
+
     private static func text(_ out: inout [MainWindowLayout.Placement], _ s: String, at origin: CGPoint) {
         for (i, c) in s.enumerated() {
             out.append(.init(sprite: MainSprites.character(c), origin: CGPoint(x: origin.x + CGFloat(i * 5), y: origin.y)))
@@ -177,6 +221,6 @@ public enum PlaylistLayout {
 
 extension SkinRenderer {
     public static func renderPlaylistWindow(_ state: PlaylistWindowState, skin: Skin) -> CGImage? {
-        render(PlaylistLayout.placements(for: state), skin: skin, size: state.size)
+        render(PlaylistLayout.placements(for: state), skin: skin, size: state.drawnSize)
     }
 }

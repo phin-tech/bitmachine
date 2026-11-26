@@ -315,6 +315,27 @@ public enum PlaceholderSkin {
         }
         // The resize grip.
         for d in 0 ..< 3 { c.fill(126 + 140 + d * 3, 72 + 34 - d * 3, 2, 2 + d * 3, Palette.bodyLight) }
+        // Windowshade: the left end and a tile (a dark strip for the title), the right end focused (y 42) and not
+        // (y 57) with its grip, expand and close buttons, and the expand button pressed.
+        for (x, y, w) in [(72, 42, 25), (72, 57, 25)] {
+            c.fill(x, y, w, 14, Palette.body)
+            c.fill(x, y, w, 1, Palette.bodyLight)
+            c.fill(x, y + 13, w, 1, Palette.bodyDark)
+            c.fill(x, y + 3, w, 8, Palette.display)
+        }
+        c.fill(72, 42, 1, 14, Palette.bodyLight)
+        c.fill(72, 45, 3, 8, Palette.body)
+        for (y, band) in [(42, Palette.accent), (57, Palette.accentDim)] {
+            c.fill(99, y, 50, 14, Palette.body)
+            c.fill(99, y, 50, 1, Palette.bodyLight)
+            c.fill(99, y + 13, 50, 1, Palette.bodyDark)
+            c.fill(148, y, 1, 14, Palette.bodyDark)
+            c.fill(99, y + 3, 20, 8, Palette.display)
+            c.fill(120, y + 4, 3, 6, band)
+            c.box(99 + 29, y + 3, 9, 9, Palette.button, glyph: "+")
+            c.box(99 + 39, y + 3, 9, 9, Palette.button, glyph: "x")
+        }
+        c.box(150, 42, 9, 9, Palette.buttonDown, glyph: "+")
     }
 
     /// The generic window (the Radio Window's frame): title bar pieces focused (y 0) and not (y 21), sides, bottom,
