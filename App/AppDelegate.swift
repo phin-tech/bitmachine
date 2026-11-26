@@ -11,7 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var main: MainWindowController!
     private var library: LibraryWindowController!
     private var equalizer: EqualizerWindowController!
+    private var radio: RadioWindowController!
     private static let equalizerOpenKey = "equalizerOpen"
+    private static let radioOpenKey = "radioOpen"
     private let permissions = PermissionsWindowController()
 
     private static let skinKey = "skinPath"
@@ -32,18 +34,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, self.equalizer.isVisible else { return }
             self.equalizer.dock(below: self.main.window)
         }
+        radio = RadioWindowController(skin: skin, player: player)
+        radio.onVisibilityChange = { [weak self] in
+            guard let self else { return }
+            UserDefaults.standard.set(self.radio.isVisible, forKey: Self.radioOpenKey)
+        }
+        // The Main Window redraws on every Player change; the Radio Window follows along.
+        let mainChange = player.onChange
+        player.onChange = { [weak self] in
+            mainChange?()
+            self?.radio.playerChanged()
+        }
+        player.onPresetsChange = { [weak self] in self?.radio.playerChanged() }
         library.use(skin)
         player.onPlaylistChange = { [weak self] in self?.library.model.refreshPlaylist() }
         main.isDoubleSize = UserDefaults.standard.bool(forKey: Self.doubleSizeKey)
         equalizer.isDoubleSize = main.isDoubleSize
+        radio.isDoubleSize = main.isDoubleSize
         main.show()
         if UserDefaults.standard.bool(forKey: Self.equalizerOpenKey) { equalizer.show(below: main.window) }
+        if UserDefaults.standard.bool(forKey: Self.radioOpenKey) { radio.show() }
         permissions.showAtLaunchIfNeeded()
         #if !APP_STORE
         UpdateChecker.shared.start()
         #endif
         #if DEBUG
         // For agents testing playback: BITMACHINE_PLAY="<search>" plays the first Apple Music result at launch.
+        // BITMACHINE_STATION="<stream URL>" tunes in to it at launch.
+        if let address = ProcessInfo.processInfo.environment["BITMACHINE_STATION"], let url = URL(string: address) {
+            player.tune(to: Station(name: url.host() ?? "Station", url: url))
+        }
         if let term = ProcessInfo.processInfo.environment["BITMACHINE_PLAY"], !term.isEmpty {
             Task {
                 do {
@@ -90,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             main.use(skin)
             library.use(skin)
             equalizer.use(skin)
+            radio.use(skin)
             UserDefaults.standard.set(url.path, forKey: Self.skinKey)
         } catch {
             let alert = NSAlert()
@@ -103,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.use(defaultSkin)
         library.use(defaultSkin)
         equalizer.use(defaultSkin)
+        radio.use(defaultSkin)
         UserDefaults.standard.removeObject(forKey: Self.skinKey)
     }
 
@@ -130,11 +152,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     var isEqualizerVisible: Bool { equalizer?.isVisible ?? false }
 
+    @objc func toggleRadio(_: Any?) {
+        if radio.isVisible { radio.hide() } else { radio.show() }
+    }
+
     // MARK: View
 
     @objc func toggleDoubleSize(_: Any?) {
         main.isDoubleSize.toggle()
         equalizer.isDoubleSize = main.isDoubleSize
+        radio.isDoubleSize = main.isDoubleSize
         if equalizer.isVisible { equalizer.dock(below: main.window) }
         UserDefaults.standard.set(main.isDoubleSize, forKey: Self.doubleSizeKey)
     }

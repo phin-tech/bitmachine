@@ -6,9 +6,16 @@ public enum TrackSource: Hashable, Codable, Sendable {
     case appleMusic(id: String)
     case localFile(URL)
     case server(server: String, song: String)
+    /// A Station's stream. It never ends and has no duration.
+    case station(URL)
 
     public var isAppleMusic: Bool {
         if case .appleMusic = self { return true }
+        return false
+    }
+
+    public var isStation: Bool {
+        if case .station = self { return true }
         return false
     }
 }

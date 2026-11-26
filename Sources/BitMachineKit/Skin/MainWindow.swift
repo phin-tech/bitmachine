@@ -33,11 +33,19 @@ public struct MainWindowState: Equatable, Sendable {
     public var seeking: Double?
     /// The analyzer, while there's something to show.
     public var visualizer: VisualizerBars?
+    /// The tuner, while a Station plays. The Track is live then: the time counts up, and the position bar is the
+    /// tuning dial, its thumb at the Station's Frequency.
+    public var tuner: TunerReadout?
+    /// With a tuner, the visualizer area shows its face rather than the analyzer; clicking the area switches.
+    public var showsTuner = true
 
     public init() {}
 
+    public var isLive: Bool { tuner != nil }
+
     public var progress: Double {
         if let seeking { return seeking }
+        if let tuner { return tuner.frequency.dialPosition }
         return duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
     }
 }
@@ -48,7 +56,7 @@ public enum MainWindowControl: Hashable, Sendable {
     case transport(TransportButton)
     case shuffle, repeats, equalizer, playlist
     case volume, balance, position
-    case time
+    case time, visualizer
 }
 
 /// Where everything goes on the Main Window, in skin pixels from the top left.
@@ -101,7 +109,8 @@ public enum MainWindowLayout {
         var controls: [(CGRect, MainWindowControl)] = TransportButton.allCases.map { (transport($0), .transport($0)) }
         controls += [
             (shuffle, .shuffle), (repeats, .repeats), (equalizerButton, .equalizer), (playlistButton, .playlist),
-            (volume, .volume), (balance, .balance), (position, .position), (time, .time), (titleBar, .titleBar),
+            (volume, .volume), (balance, .balance), (position, .position), (time, .time), (visualizer, .visualizer),
+            (titleBar, .titleBar),
         ]
         return controls.first { $0.0.contains(p) }?.1
     }
@@ -161,13 +170,14 @@ public enum MainWindowLayout {
         }
 
         if state.playback != .stopped {
-            let seconds = state.showsRemaining ? max(state.duration - state.elapsed, 0) : state.elapsed
+            // Live, there's no end to count down to.
+            let seconds = state.showsRemaining && !state.isLive ? max(state.duration - state.elapsed, 0) : state.elapsed
             let total = min(Int(seconds), 99 * 60 + 59)
             let digits = [total / 600, total / 60 % 10, total % 60 / 10, total % 10]
             for (digit, x) in zip(digits, [9, 21, 39, 51] as [CGFloat]) {
                 put(MainSprites.digit(digit), time.minX + x, time.minY)
             }
-            if state.showsRemaining { put(MainSprites.minusSign, time.minX - 1, time.minY + 6) }
+            if state.showsRemaining, !state.isLive { put(MainSprites.minusSign, time.minX - 1, time.minY + 6) }
         }
 
         text(&out, scrolled(state.title, by: state.titleScroll, width: Int(title.width) / 5), at: title.origin)
@@ -259,8 +269,33 @@ public enum SkinRenderer {
     public static func renderMainWindow(_ state: MainWindowState, skin: Skin) -> CGImage? {
         let size = state.isWindowshade ? MainWindowLayout.shadeSize : MainWindowLayout.size
         guard let image = render(MainWindowLayout.placements(for: state), skin: skin, size: size) else { return nil }
-        guard let visualizer = state.visualizer, !state.isWindowshade else { return image }
+        guard !state.isWindowshade else { return image }
+        if let tuner = state.tuner, state.showsTuner {
+            return drawTuner(tuner, stereo: state.stereo, colors: skin.visualizerColors, over: image)
+        }
+        guard let visualizer = state.visualizer else { return image }
         return drawVisualizer(visualizer, colors: skin.visualizerColors, over: image)
+    }
+
+    /// The tuner face: colour 0 behind, colour 1 (the grid dots) for unlit segments, colour 2 (the top of the bars)
+    /// for lit ones, so it follows every Skin.
+    static func drawTuner(_ tuner: TunerReadout, stereo: Bool, colors: [RGB], over image: CGImage) -> CGImage? {
+        guard colors.count >= 24, let context = CGContext(
+            data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        let h = CGFloat(image.height)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let area = MainWindowLayout.visualizer
+        func fill(_ r: CGRect, _ colour: RGB) {
+            context.setFillColor(colour.cgColor)
+            context.fill(CGRect(x: area.minX + r.minX, y: h - (area.minY + r.minY) - r.height, width: r.width, height: r.height))
+        }
+        fill(CGRect(origin: .zero, size: area.size), colors[0])
+        let pixels = TunerFace.pixels(tuner, stereo: stereo)
+        for r in pixels.ghost { fill(r, colors[1]) }
+        for r in pixels.lit { fill(r, colors[2]) }
+        return context.makeImage()
     }
 
     /// The classic analyzer: colour 0 behind, colour 1 for the dot grid, colours 2 (top) to 17 (bottom) for the bars,
