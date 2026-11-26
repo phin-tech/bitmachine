@@ -16,3 +16,6 @@ spikes/*/*.xcodeproj/
 
 # Third-party skins for development; never committed
 Skins/
+
+# Claude Code: local settings and worktrees (other sessions may work in .claude/worktrees)
+.claude/
