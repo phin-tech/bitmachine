@@ -28,7 +28,7 @@ public enum ServerError: LocalizedError, Equatable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case let .server(40, _): "Wrong username or password"
+        case .server(40, _): "Wrong username or password"
         case let .server(_, message): message
         case .unreadable: "The Server's answer couldn't be read"
         case let .unreachable(host, reason): "Can't reach \(host): \(reason)"

@@ -11,6 +11,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "BitMachineKit"),
-        .testTarget(name: "BitMachineKitTests", dependencies: ["BitMachineKit"]),
+        .testTarget(name: "BitMachineKitTests", dependencies: ["BitMachineKit"], exclude: ["Fixtures"]),
     ]
 )
