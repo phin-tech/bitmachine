@@ -218,19 +218,26 @@ struct LibraryView: View {
         .fixedSize()
     }
 
-    /// A column of names with an "all" row at the top; "" stands for all.
+    /// A column of names with an "all" row at the top; "" stands for all. One click picks a row.
     private func column(_ all: String, _ names: [String], selection: Binding<String>) -> some View {
-        List(selection: Binding<String?>(get: { selection.wrappedValue }, set: { selection.wrappedValue = $0 ?? "" })) {
-            ForEach([""] + names, id: \.self) { name in
-                Text(name.isEmpty ? all : name)
-                    .lineLimit(1)
-                    .font(font)
-                    .foregroundStyle(text)
-                    .listRowBackground(selection.wrappedValue == name ? self.selection : background)
-                    .tag(Optional(name))
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach([""] + names, id: \.self) { name in
+                    Button { selection.wrappedValue = name } label: {
+                        Text(name.isEmpty ? all : name)
+                            .lineLimit(1)
+                            .font(font)
+                            .foregroundStyle(selection.wrappedValue == name ? currentText : text)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(selection.wrappedValue == name ? self.selection : Color.clear)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        .scrollContentBackground(.hidden)
         .background(background)
     }
 
