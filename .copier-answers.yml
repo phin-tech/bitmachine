@@ -1,0 +1,26 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.4.1
+_src_path: /Users/sphinizy/src/github.com/phin-tech/apple-template
+app_category: public.app-category.music
+app_name: BitMachine
+app_slug: bitmachine
+app_store: false
+bundle_id: tech.phin.bitmachine
+bundle_prefix: tech.phin
+description: A skinnable music player for Apple Music, your files and your Navidrome
+    server
+devices: false
+document_extension: ''
+downloads: true
+github_owner: phin-tech
+github_repo: phin-tech/bitmachine
+homebrew_tap: phin-tech/homebrew-tap
+include_cli: false
+install_on_macs: false
+license: Apache-2.0
+macos_min: '14.0'
+op_item: op://Development/lc6wrq7lltjd47uue26cdxttzu
+scope: app
+sparkle_public_key: 2mirghhdXOaz0RtSlgkR5MOzQxF+QkubzK9tgq8eO8U=
+team_id: J35P7AJDN7
+xcode_version: '26.6'

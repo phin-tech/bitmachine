@@ -1,0 +1,23 @@
+# What app-release (`just ship` and friends) knows about BitMachine. Every key: src/app_release/config.py
+# in https://git.phin.tech/sam/app-release. Top-level keys go before the tables.
+app = "BitMachine"
+bundle_id = "tech.phin.bitmachine"
+repo = "phin-tech/bitmachine"
+description = "A skinnable music player for Apple Music, your files and your Navidrome server"
+team_id = "J35P7AJDN7"
+op_item = "op://Development/lc6wrq7lltjd47uue26cdxttzu"
+
+[homebrew]
+tap = "phin-tech/homebrew-tap"
+token = "bitmachine"
+macos = "sonoma"
+
+# On the download page: the phin-apps bucket on Cloudflare R2, through the cf CLI (`cf auth login`). Under the name it
+# shows the description above. allow = ["someone@gmail.com"] keeps it to those people, after signing in (Cloudflare
+# Access); pin = true lists it first.
+[downloads]
+
+# `just notes patch` drafts release notes with a cheap model on OpenRouter. Its key is openrouter_api_key in the secrets
+# store unless this says otherwise (another field, or an op:// reference to any item); OPENROUTER_API_KEY overrides both.
+# [notes]
+# api_key = "op://Private/OpenRouter API Key/credential"

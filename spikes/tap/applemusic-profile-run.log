@@ -1,0 +1,17 @@
+2026-11-26T13:26:51Z  === TapSpike applemusic, pid 56664, macOS Version 27.0 (Build 26A428)
+2026-11-26T13:26:51Z  MusicAuthorization: .authorized
+2026-11-26T13:26:51Z  canPlayCatalogContent: true
+2026-11-26T13:26:51Z  storefront country: us
+2026-11-26T13:26:52Z  raw catalog search: HTTP 200, 1302 bytes: {"results":{"songs":{"href":"/v1/catalog/us/search?limit=1&term=Daft+Punk+One+More+Time&types=songs","next":"/v1/catalog/us/search?offset=1&term=Daft+Punk+One+More+Time&types=songs","data":[{"id":"697195462","type":"songs","href":"/v1/catalog/us/songs/697195462","attributes":{"albumName":"Discovery"
+2026-11-26T13:26:53Z  catalog search failed: DecodingError.dataCorrupted: Data was corrupted. Debug description: The given data was not valid JSON.. Underlying error: Error Domain=NSCocoaErrorDomain Code=3840 "Unexpected end of file" UserInfo={NSDebugDescription=Unexpected end of file}
+2026-11-26T13:26:55Z  falling back to a library song
+2026-11-26T13:26:55Z  playing "A City Upon a Hill?" for Violin & Electronics by Johnny Gandelsman (i.ZzKpGT6VaN5)
+2026-11-26T13:27:02Z  player status: playing, time 4.072434101294617
+2026-11-26T13:27:02Z  [Apple Music] HAL processes running output:
+2026-11-26T13:27:02Z     pid 54168 object 144 com.p5sys.jump.connect
+2026-11-26T13:27:02Z     pid 56698 object 145 com.apple.MediaPlayer.RemotePlayerService
+2026-11-26T13:27:04Z  [Apple Music] tap own pid 56664: peak -inf dBFS, rms -inf dBFS, 0 samples in 0 callbacks
+2026-11-26T13:27:06Z  [Apple Music] tap pid 54168 com.p5sys.jump.connect: peak -inf dBFS, rms -inf dBFS, 184320 samples in 180 callbacks
+2026-11-26T13:27:08Z  [Apple Music] tap pid 56698 com.apple.MediaPlayer.RemotePlayerService: peak -34.1 dBFS, rms -49.2 dBFS, 184320 samples in 180 callbacks
+2026-11-26T13:27:10Z  [Apple Music] tap global: peak -28.1 dBFS, rms -42.0 dBFS, 182272 samples in 178 callbacks
+2026-11-26T13:27:10Z  === done

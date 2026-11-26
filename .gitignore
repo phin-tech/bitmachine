@@ -1,0 +1,18 @@
+.build/
+.swiftpm/
+*.xcodeproj
+DerivedData/
+.DS_Store
+Signing.local.xcconfig
+build/
+# Info.plists and entitlements, which xcodegen writes from project.yml
+Generated/
+
+# Spikes: build output and signing files
+spikes/*/build/
+spikes/*/build-dev/
+spikes/*/*.xcodeproj/
+*.provisionprofile
+
+# Third-party skins for development; never committed
+Skins/

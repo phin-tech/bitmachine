@@ -1,0 +1,11 @@
+2026-11-26T14:00:44Z  === TapSpike muted, pid 73091, macOS Version 27.0 (Build 26A428)
+2026-11-26T14:00:44Z  MusicAuthorization: .authorized
+2026-11-26T14:00:44Z  canPlayCatalogContent: true
+2026-11-26T14:00:44Z  storefront country: us
+2026-11-26T14:00:49Z  raw catalog search: HTTP 200, 1302 bytes: {"results":{"songs":{"href":"/v1/catalog/us/search?limit=1&term=Daft+Punk+One+More+Time&types=songs","next":"/v1/catalog/us/search?offset=1&term=Daft+Punk+One+More+Time&types=songs","data":[{"id":"697195462","type":"songs","href":"/v1/catalog/us/songs/697195462","attributes":{"albumName":"Discovery"
+2026-11-26T14:00:50Z  playing One More Time by Daft Punk (697195462)
+2026-11-26T14:00:56Z  player status: playing, time 3.9536776142299193
+2026-11-26T14:00:56Z  muting RemotePlayerService pid 73170 for 6 s while tapping it
+2026-11-26T14:01:02Z  [muted] tap RemotePlayerService: peak -14.7 dBFS, rms -35.0 dBFS, 568320 samples in 555 callbacks
+2026-11-26T14:01:02Z  [muted] player status after: playing, time 10.097539656038819
+2026-11-26T14:01:02Z  === done

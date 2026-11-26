@@ -1,0 +1,15 @@
+2026-11-26T13:31:11Z  === TapSpike applemusic, pid 60003, macOS Version 27.0 (Build 26A428)
+2026-11-26T13:31:11Z  MusicAuthorization: .authorized
+2026-11-26T13:31:11Z  canPlayCatalogContent: true
+2026-11-26T13:31:11Z  storefront country: us
+2026-11-26T13:31:12Z  raw catalog search: HTTP 200, 1302 bytes: {"results":{"songs":{"href":"/v1/catalog/us/search?limit=1&term=Daft+Punk+One+More+Time&types=songs","next":"/v1/catalog/us/search?offset=1&term=Daft+Punk+One+More+Time&types=songs","data":[{"id":"697195462","type":"songs","href":"/v1/catalog/us/songs/697195462","attributes":{"albumName":"Discovery"
+2026-11-26T13:31:12Z  playing One More Time by Daft Punk (697195462)
+2026-11-26T13:31:18Z  player status: playing, time 3.8645106470410155
+2026-11-26T13:31:18Z  [Apple Music] HAL processes running output:
+2026-11-26T13:31:18Z     pid 54168 object 144 com.p5sys.jump.connect
+2026-11-26T13:31:18Z     pid 60018 object 145 com.apple.MediaPlayer.RemotePlayerService
+2026-11-26T13:31:20Z  [Apple Music] tap own pid 60003: peak -inf dBFS, rms -inf dBFS, 0 samples in 0 callbacks
+2026-11-26T13:31:22Z  [Apple Music] tap pid 54168 com.p5sys.jump.connect: peak -inf dBFS, rms -inf dBFS, 184320 samples in 180 callbacks
+2026-11-26T13:31:24Z  [Apple Music] tap pid 60018 com.apple.MediaPlayer.RemotePlayerService: peak -15.1 dBFS, rms -35.1 dBFS, 184320 samples in 180 callbacks
+2026-11-26T13:31:27Z  [Apple Music] tap global: peak -14.7 dBFS, rms -34.9 dBFS, 182272 samples in 178 callbacks
+2026-11-26T13:31:27Z  === done

@@ -1,0 +1,13 @@
+2026-11-26T04:06:57Z  === TapSpike control, pid 71892, macOS Version 27.0 (Build 26A428)
+2026-11-26T04:06:57Z  playing a 440 Hz tone at -12 dBFS in our own process
+2026-11-26T04:06:58Z  [own tone] HAL processes running output:
+2026-11-26T04:06:58Z     pid 71892 object 144 tech.phin.bitmachine
+2026-11-26T04:07:01Z  [own tone] tap own pid 71892: peak -23.8 dBFS, rms -27.1 dBFS, 184320 samples in 180 callbacks
+2026-11-26T04:07:03Z  [own tone] tap global: peak -24.1 dBFS, rms -27.1 dBFS, 184320 samples in 180 callbacks
+2026-11-26T04:07:03Z  afplay pid 71927 playing a 440 Hz tone at -12 dBFS
+2026-11-26T04:07:04Z  [afplay tone] HAL processes running output:
+2026-11-26T04:07:04Z     pid 71927 object 161 (no bundle id)
+2026-11-26T04:07:06Z  [afplay tone] tap own pid 71892: peak -inf dBFS, rms -inf dBFS, 0 samples in 0 callbacks
+2026-11-26T04:07:08Z  [afplay tone] tap pid 71927 : peak -23.7 dBFS, rms -27.1 dBFS, 184320 samples in 180 callbacks
+2026-11-26T04:07:10Z  [afplay tone] tap global: peak -24.0 dBFS, rms -27.1 dBFS, 184320 samples in 180 callbacks
+2026-11-26T04:07:10Z  === done
