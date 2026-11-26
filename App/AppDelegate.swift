@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.radio.playerChanged()
         }
         player.onPresetsChange = { [weak self] in self?.radio.playerChanged() }
+        dock.register(radio.window)
         library.use(skin)
         player.onPlaylistChange = { [weak self] in self?.library.model.refreshPlaylist() }
         main.isDoubleSize = UserDefaults.standard.bool(forKey: Self.doubleSizeKey)

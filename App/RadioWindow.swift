@@ -12,6 +12,7 @@ final class RadioWindowController: NSObject, NSWindowDelegate, NSTextFieldDelega
     private var skin: Skin
     private var searchTask: Task<Void, Never>?
     private var loadedOnce = false
+    private var hasSavedPlace = false
     private var state = RadioWindowState() {
         didSet { if state != oldValue { redraw() } }
     }
@@ -35,7 +36,7 @@ final class RadioWindowController: NSObject, NSWindowDelegate, NSTextFieldDelega
         window.contentView = view
         window.delegate = self
         window.setFrameAutosaveName("RadioWindow")
-        if !window.setFrameUsingName("RadioWindow") { window.center() }
+        hasSavedPlace = window.setFrameUsingName("RadioWindow")
         view.controller = self
 
         field.isBordered = false
@@ -61,8 +62,13 @@ final class RadioWindowController: NSObject, NSWindowDelegate, NSTextFieldDelega
         redraw()
     }
 
+    /// Shows it where it was last, or the first time, docked under the Main Window's Dock.
     func show() {
         resize()
+        if !hasSavedPlace {
+            AppDelegate.shared.dock.placeUnderDock(window)
+            hasSavedPlace = true
+        }
         window.makeKeyAndOrderFront(nil)
         if !loadedOnce { loadTop() }
         onVisibilityChange?()
@@ -102,7 +108,7 @@ final class RadioWindowController: NSObject, NSWindowDelegate, NSTextFieldDelega
         let top = frame.maxY
         frame.size = CGSize(width: size.width * scale, height: size.height * scale)
         frame.origin.y = top - frame.height
-        window.setFrame(frame, display: true)
+        AppDelegate.shared.dock.setFrame(window, frame)
         let r = RadioWindowLayout.search.insetBy(dx: 1, dy: 1)
         // The view is flipped, so skin coordinates map straight across.
         field.frame = CGRect(x: (r.minX + 2) * scale, y: r.minY * scale, width: (r.width - 3) * scale, height: r.height * scale)
@@ -256,6 +262,28 @@ final class RadioWindowView: NSView {
     private var tracking: RadioControl?
     private var scrollRemainder: CGFloat = 0
 
+    // MARK: Dragging the window, through the Dock
+
+    private var draggingWindow = false
+
+    private func startWindowDrag(_ event: NSEvent) {
+        guard let window else { return }
+        draggingWindow = true
+        AppDelegate.shared.dock.beginDrag(window, at: window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    /// Handles a drag or mouse-up while the window is being dragged; false when it isn't.
+    private func continueWindowDrag(_ event: NSEvent, ended: Bool) -> Bool {
+        guard draggingWindow, let window else { return false }
+        if ended {
+            draggingWindow = false
+            AppDelegate.shared.dock.endDrag()
+        } else {
+            AppDelegate.shared.dock.continueDrag(to: window.convertPoint(toScreen: event.locationInWindow))
+        }
+        return true
+    }
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
@@ -281,7 +309,7 @@ final class RadioWindowView: NSView {
         let control = controller.control(at: skinPoint(event))
         switch control {
         case .titleBar?, nil:
-            window?.performDrag(with: event)
+            startWindowDrag(event)
             tracking = nil
         case let .row(i)?:
             window?.makeFirstResponder(self)
@@ -294,11 +322,13 @@ final class RadioWindowView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if continueWindowDrag(event, ended: false) { return }
         guard let controller, let tracking else { return }
         controller.press(controller.control(at: skinPoint(event)) == tracking ? tracking : nil)
     }
 
     override func mouseUp(with event: NSEvent) {
+        if continueWindowDrag(event, ended: true) { return }
         guard let controller, let tracking else { return }
         self.tracking = nil
         controller.press(nil)
