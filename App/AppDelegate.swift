@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let playlistOpenKey = "playlistOpen"
     private static let equalizerOpenKey = "equalizerOpen"
     private let permissions = PermissionsWindowController()
+    let dock = Dock()
 
     private static let skinKey = "skinPath"
     private static let doubleSizeKey = "doubleSize"
@@ -30,7 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             UserDefaults.standard.set(self.equalizer.isVisible, forKey: Self.equalizerOpenKey)
             self.main.redraw()
-            self.dockWindows()
         }
         playlist = PlaylistWindowController(skin: skin, player: player)
         playlist.onVisibilityChange = { [weak self] in
@@ -38,16 +38,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(self.playlist.isVisible, forKey: Self.playlistOpenKey)
             self.main.redraw()
         }
-        main.onResize = { [weak self] in self?.dockWindows() }
+        dock.register(main.window)
+        dock.register(equalizer.window)
+        dock.register(playlist.window)
         library.use(skin)
         player.onPlaylistChange = { [weak self] in self?.library.model.refreshPlaylist() }
         main.isDoubleSize = UserDefaults.standard.bool(forKey: Self.doubleSizeKey)
         equalizer.isDoubleSize = main.isDoubleSize
         main.show()
         playlist.isDoubleSize = main.isDoubleSize
-        if UserDefaults.standard.bool(forKey: Self.equalizerOpenKey) { equalizer.show(below: main.window) }
+        if UserDefaults.standard.bool(forKey: Self.equalizerOpenKey) { equalizer.show() }
         if UserDefaults.standard.object(forKey: Self.playlistOpenKey) == nil
-            || UserDefaults.standard.bool(forKey: Self.playlistOpenKey) { showPlaylistDocked() }
+            || UserDefaults.standard.bool(forKey: Self.playlistOpenKey) { playlist.show() }
         permissions.showAtLaunchIfNeeded()
         #if !APP_STORE
         UpdateChecker.shared.start()
@@ -141,35 +143,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var isLibraryVisible: Bool { library?.window.isVisible ?? false }
 
     @objc func toggleEqualizer(_: Any?) {
-        if equalizer.isVisible { equalizer.hide() } else { equalizer.show(below: main.window) }
-        dockWindows()
+        if equalizer.isVisible { equalizer.hide() } else { equalizer.show() }
     }
 
     @objc func togglePlaylist(_: Any?) {
-        if playlist.isVisible { playlist.hide() } else { showPlaylistDocked() }
+        if playlist.isVisible { playlist.hide() } else { playlist.show() }
     }
 
     var isPlaylistVisible: Bool { playlist?.isVisible ?? false }
-
-    private func showPlaylistDocked() {
-        playlist.show(below: equalizer.isVisible ? equalizer.window : main.window, parent: main.window)
-    }
-
-    /// Until real docking: the Equalizer under the Main Window, the Playlist under whichever is lowest.
-    private func dockWindows() {
-        if equalizer.isVisible { equalizer.dock(below: main.window) }
-        if playlist.isVisible { playlist.dock(below: equalizer.isVisible ? equalizer.window : main.window) }
-    }
 
     var isEqualizerVisible: Bool { equalizer?.isVisible ?? false }
 
     // MARK: View
 
     @objc func toggleDoubleSize(_: Any?) {
-        main.isDoubleSize.toggle()
-        equalizer.isDoubleSize = main.isDoubleSize
-        playlist.isDoubleSize = main.isDoubleSize
-        dockWindows()
+        let double = !main.isDoubleSize
+        dock.scale(by: double ? 2 : 0.5) {
+            main.isDoubleSize = double
+            equalizer.isDoubleSize = double
+            playlist.isDoubleSize = double
+        }
         UserDefaults.standard.set(main.isDoubleSize, forKey: Self.doubleSizeKey)
     }
 

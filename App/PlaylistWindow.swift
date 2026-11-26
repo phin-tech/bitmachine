@@ -20,6 +20,7 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
     }
 
     var onVisibilityChange: (() -> Void)?
+    private var hasSavedPlace = false
 
     init(skin: Skin, player: Player) {
         self.skin = skin
@@ -34,6 +35,8 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         window.contentView = view
         window.delegate = self
         view.controller = self
+        window.setFrameAutosaveName("PlaylistWindow")
+        hasSavedPlace = window.setFrameUsingName("PlaylistWindow")
         if let saved = UserDefaults.standard.string(forKey: Self.sizeKey) {
             state.size = PlaylistLayout.snapped(NSSizeFromString(saved))
         }
@@ -52,22 +55,20 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         redraw()
     }
 
-    func show(below other: NSWindow, parent main: NSWindow) {
+    /// Shows it where it was last, or the first time, docked under the Main Window's Dock.
+    func show() {
         resize(to: state.size)
-        dock(below: other)
-        if window.parent == nil { main.addChildWindow(window, ordered: .above) }
+        if !hasSavedPlace {
+            AppDelegate.shared.dock.placeUnderDock(window)
+            hasSavedPlace = true
+        }
         window.orderFront(nil)
         onVisibilityChange?()
     }
 
     func hide() {
-        window.parent?.removeChildWindow(window)
         window.orderOut(nil)
         onVisibilityChange?()
-    }
-
-    func dock(below other: NSWindow) {
-        window.setFrameOrigin(CGPoint(x: other.frame.minX, y: other.frame.minY - window.frame.height))
     }
 
     // MARK: Drawing
@@ -103,7 +104,7 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
         let top = frame.maxY
         frame.size = CGSize(width: state.size.width * scale, height: state.size.height * scale)
         frame.origin.y = top - frame.height
-        window.setFrame(frame, display: true)
+        AppDelegate.shared.dock.setFrame(window, frame)
         refresh()
     }
 
@@ -275,6 +276,28 @@ final class PlaylistWindowView: NSView {
     private var dragRow: Int?
     private var resizeStart: (mouse: CGPoint, size: CGSize)?
 
+    // MARK: Dragging the window, through the Dock
+
+    private var draggingWindow = false
+
+    private func startWindowDrag(_ event: NSEvent) {
+        guard let window else { return }
+        draggingWindow = true
+        AppDelegate.shared.dock.beginDrag(window, at: window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    /// Handles a drag or mouse-up while the window is being dragged; false when it isn't.
+    private func continueWindowDrag(_ event: NSEvent, ended: Bool) -> Bool {
+        guard draggingWindow, let window else { return false }
+        if ended {
+            draggingWindow = false
+            AppDelegate.shared.dock.endDrag()
+        } else {
+            AppDelegate.shared.dock.continueDrag(to: window.convertPoint(toScreen: event.locationInWindow))
+        }
+        return true
+    }
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
@@ -351,7 +374,7 @@ final class PlaylistWindowView: NSView {
         switch control {
         case .titleBar?, nil:
             tracking = nil
-            window?.performDrag(with: event)
+            startWindowDrag(event)
         case .list?:
             let row = PlaylistLayout.row(at: point.y, size: size, scroll: controller.state.scroll) ?? -1
             controller.click(row: row, modifiers: event.modifierFlags, count: event.clickCount)
@@ -367,6 +390,7 @@ final class PlaylistWindowView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if continueWindowDrag(event, ended: false) { return }
         guard let controller, let tracking else { return }
         let point = skinPoint(event)
         let size = controller.state.size
@@ -393,6 +417,7 @@ final class PlaylistWindowView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if continueWindowDrag(event, ended: true) { return }
         guard let controller, let tracking else { return }
         self.tracking = nil
         dragRow = nil

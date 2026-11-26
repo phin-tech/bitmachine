@@ -98,11 +98,13 @@ final class DebugDriver {
     /// Sends the window a mouse down, drags if `to` differs, and a mouse up, as a click there would. Points count from
     /// the window's top left.
     private func mouse(in window: NSWindow, from: CGPoint, to: CGPoint) {
-        // The top left stays put while a drag resizes the window, so each event measures from the height it has then.
-        let top = window.frame.maxY
+        // The path is fixed on screen, as a real mouse's is, from where the points were when the drag began; each event
+        // is placed in the window as it is then, since a drag may move or resize it.
+        let start = window.frame
         func send(_ type: NSEvent.EventType, _ p: CGPoint) {
-            let y = top - p.y - window.frame.minY
-            guard let event = NSEvent.mouseEvent(with: type, location: CGPoint(x: p.x, y: y),
+            let screen = CGPoint(x: start.minX + p.x, y: start.maxY - p.y)
+            let x = screen.x - window.frame.minX, y = screen.y - window.frame.minY
+            guard let event = NSEvent.mouseEvent(with: type, location: CGPoint(x: x, y: y),
                                                  modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0,
                                                  clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)

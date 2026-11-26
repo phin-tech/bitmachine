@@ -18,6 +18,7 @@ final class EqualizerWindowController: NSObject, NSWindowDelegate {
     }
 
     var onVisibilityChange: (() -> Void)?
+    private var hasSavedPlace = false
 
     init(skin: Skin, player: Player) {
         self.skin = skin
@@ -32,6 +33,8 @@ final class EqualizerWindowController: NSObject, NSWindowDelegate {
         window.contentView = view
         window.delegate = self
         view.controller = self
+        window.setFrameAutosaveName("EqualizerWindow")
+        hasSavedPlace = window.setFrameUsingName("EqualizerWindow")
         state.settings = player.equalizer
         player.onEqualizerChange = { [weak self] in
             guard let self else { return }
@@ -46,24 +49,20 @@ final class EqualizerWindowController: NSObject, NSWindowDelegate {
         redraw()
     }
 
-    /// Shows it docked under `main`.
-    func show(below main: NSWindow) {
+    /// Shows it where it was last, or the first time, docked under the Main Window's Dock.
+    func show() {
         resize()
-        dock(below: main)
-        if window.parent == nil { main.addChildWindow(window, ordered: .above) }
+        if !hasSavedPlace {
+            AppDelegate.shared.dock.placeUnderDock(window)
+            hasSavedPlace = true
+        }
         window.orderFront(nil)
         onVisibilityChange?()
     }
 
     func hide() {
-        window.parent?.removeChildWindow(window)
         window.orderOut(nil)
         onVisibilityChange?()
-    }
-
-    func dock(below main: NSWindow) {
-        let frame = window.frame
-        window.setFrameOrigin(CGPoint(x: main.frame.minX, y: main.frame.minY - frame.height))
     }
 
     var scale: CGFloat { isDoubleSize ? 2 : 1 }
@@ -82,7 +81,7 @@ final class EqualizerWindowController: NSObject, NSWindowDelegate {
         let top = frame.maxY
         frame.size = CGSize(width: size.width * scale, height: size.height * scale)
         frame.origin.y = top - frame.height
-        window.setFrame(frame, display: true)
+        AppDelegate.shared.dock.setFrame(window, frame)
         redraw()
     }
 
@@ -149,6 +148,28 @@ final class EqualizerWindowView: NSView {
     var scale: CGFloat = 1
     private var tracking: EqualizerControl?
 
+    // MARK: Dragging the window, through the Dock
+
+    private var draggingWindow = false
+
+    private func startWindowDrag(_ event: NSEvent) {
+        guard let window else { return }
+        draggingWindow = true
+        AppDelegate.shared.dock.beginDrag(window, at: window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    /// Handles a drag or mouse-up while the window is being dragged; false when it isn't.
+    private func continueWindowDrag(_ event: NSEvent, ended: Bool) -> Bool {
+        guard draggingWindow, let window else { return false }
+        if ended {
+            draggingWindow = false
+            AppDelegate.shared.dock.endDrag()
+        } else {
+            AppDelegate.shared.dock.continueDrag(to: window.convertPoint(toScreen: event.locationInWindow))
+        }
+        return true
+    }
+
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
 
@@ -173,7 +194,7 @@ final class EqualizerWindowView: NSView {
         switch control {
         case .titleBar?, nil:
             if event.clickCount == 2, control == .titleBar { controller.perform(.shade) }
-            else { window?.performDrag(with: event) }
+            else { startWindowDrag(event) }
             tracking = nil
         case .preamp?, .band?:
             tracking = control
@@ -186,6 +207,7 @@ final class EqualizerWindowView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if continueWindowDrag(event, ended: false) { return }
         guard let controller, let tracking else { return }
         let point = skinPoint(event)
         switch tracking {
@@ -197,6 +219,7 @@ final class EqualizerWindowView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if continueWindowDrag(event, ended: true) { return }
         guard let controller, let tracking else { return }
         self.tracking = nil
         controller.press(nil)

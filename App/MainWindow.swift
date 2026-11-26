@@ -19,9 +19,6 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         didSet { resize() }
     }
 
-    /// Told after the window changes size, so the windows docked to it can follow.
-    var onResize: (() -> Void)?
-
     init(skin: Skin, player: Player) {
         self.skin = skin
         self.player = player
@@ -90,9 +87,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         let top = frame.maxY
         frame.size = CGSize(width: size.width * scale, height: size.height * scale)
         frame.origin.y = top - frame.height
-        window.setFrame(frame, display: true)
+        AppDelegate.shared.dock.setFrame(window, frame)
         redraw()
-        onResize?()
     }
 
     func windowDidBecomeKey(_: Notification) { redraw() }
@@ -140,6 +136,28 @@ final class MainWindowView: NSView {
 
     /// The control the mouse went down on.
     private var tracking: MainWindowControl?
+
+    // MARK: Dragging the window, through the Dock
+
+    private var draggingWindow = false
+
+    private func startWindowDrag(_ event: NSEvent) {
+        guard let window else { return }
+        draggingWindow = true
+        AppDelegate.shared.dock.beginDrag(window, at: window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    /// Handles a drag or mouse-up while the window is being dragged; false when it isn't.
+    private func continueWindowDrag(_ event: NSEvent, ended: Bool) -> Bool {
+        guard draggingWindow, let window else { return false }
+        if ended {
+            draggingWindow = false
+            AppDelegate.shared.dock.endDrag()
+        } else {
+            AppDelegate.shared.dock.continueDrag(to: window.convertPoint(toScreen: event.locationInWindow))
+        }
+        return true
+    }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
@@ -198,7 +216,7 @@ final class MainWindowView: NSView {
             if event.clickCount == 2 {
                 controller.toggleWindowshade()
             } else {
-                window?.performDrag(with: event)
+                startWindowDrag(event)
             }
             tracking = nil
         case .volume?, .balance?, .position?:
@@ -208,11 +226,12 @@ final class MainWindowView: NSView {
             controller.state.pressed = control
         case nil:
             // Anywhere without a control drags the window, as in classic players.
-            window?.performDrag(with: event)
+            startWindowDrag(event)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if continueWindowDrag(event, ended: false) { return }
         guard let controller, let tracking else { return }
         let point = skinPoint(event)
         switch tracking {
@@ -226,6 +245,7 @@ final class MainWindowView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if continueWindowDrag(event, ended: true) { return }
         guard let controller, let tracking else { return }
         self.tracking = nil
         let point = skinPoint(event)
