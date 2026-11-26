@@ -245,9 +245,32 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
             item("Randomize") { [weak self] in self?.player.edit { $0.randomize() } }
         case .list:
             item("New Playlist", enabled: !entries.isEmpty) { [weak self] in self?.player.removeAll() }
+            if let reference = player.playlist.serverPlaylist {
+                menu.addItem(.separator())
+                item("Save to Server Playlist “\(reference.name)”") { [weak self] in self?.saveToServer() }
+            }
+            item("Open a Server Playlist…") { AppDelegate.shared.showLibrary(nil) }
         }
         let rect = PlaylistLayout.menu(which, state.size)
         menu.popUp(positioning: nil, at: CGPoint(x: rect.minX * scale, y: rect.minY * scale), in: view)
+    }
+
+    private func saveToServer() {
+        Task {
+            let alert = NSAlert()
+            do {
+                let (saved, leftOut) = try await player.saveToServer()
+                guard leftOut > 0 else { return }
+                alert.messageText = "Saved \(saved) songs"
+                alert.informativeText = "\(leftOut) Track\(leftOut == 1 ? " isn't" : "s aren't") on that Server, so "
+                    + "\(leftOut == 1 ? "it was" : "they were") left out of the Server Playlist. "
+                    + "They stay in your Playlist."
+            } catch {
+                alert.messageText = "Couldn't save to the Server"
+                alert.informativeText = error.localizedDescription
+            }
+            alert.runModal()
+        }
     }
 
     func selectAll() {

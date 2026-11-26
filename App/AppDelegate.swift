@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate!
 
     private let defaultSkin = PlaceholderSkin.make()
-    private let player = Player()
+    let player = Player()
     private var main: MainWindowController!
     private var library: LibraryWindowController!
     private var equalizer: EqualizerWindowController!
@@ -84,6 +84,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     player.add(Array(found.prefix(2)), play: true)
                 } catch {
                     NSLog("BitMachine: BITMACHINE_PLAY failed: \(error)")
+                }
+            }
+        }
+        // BITMACHINE_SERVER="<address>|<user>|<password>" signs in to a Server at launch, and
+        // BITMACHINE_SERVER_PLAY="<search>" then plays what it finds there.
+        let environment = ProcessInfo.processInfo.environment
+        if let parts = environment["BITMACHINE_SERVER"]?.components(separatedBy: "|"), parts.count == 3,
+           let url = URL(string: parts[0]) {
+            Task {
+                do {
+                    let account = player.servers.accounts.first { $0.url == url && $0.username == parts[1] }
+                        ?? ServerAccount(name: url.host() ?? "Server", url: url, username: parts[1])
+                    try await player.servers.add(account, password: parts[2])
+                    if let term = environment["BITMACHINE_SERVER_PLAY"], !term.isEmpty {
+                        let found = try await player.servers.client(for: account.id).search(term)
+                        player.add(found, play: true)
+                    }
+                    // BITMACHINE_SERVER_PLAYLIST="<name>" opens that Server Playlist, moves its first song to the end
+                    // and saves it back, as LIST ▸ Save to Server Playlist would.
+                    if let name = environment["BITMACHINE_SERVER_PLAYLIST"],
+                       let found = try await player.servers.client(for: account.id).playlists().first(where: { $0.name == name }) {
+                        try await player.openServerPlaylist(found.id, on: account.id)
+                        if let first = player.playlist.entries.first { player.move([first.id], to: player.playlist.entries.count) }
+                        let result = try await player.saveToServer()
+                        NSLog("BitMachine: saved %d songs to %@, left out %d", result.saved, name, result.leftOut)
+                    }
+                } catch {
+                    NSLog("BitMachine: BITMACHINE_SERVER failed: \(error)")
                 }
             }
         }

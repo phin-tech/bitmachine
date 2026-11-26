@@ -25,6 +25,19 @@ public enum TrackSource: Hashable, Codable, Sendable {
     }
 }
 
+/// A Server Playlist, by its Server and its id there.
+public struct ServerPlaylistReference: Hashable, Codable, Sendable {
+    public var server: String
+    public var id: String
+    public var name: String
+
+    public init(server: String, id: String, name: String) {
+        self.server = server
+        self.id = id
+        self.name = name
+    }
+}
+
 /// One playable piece of audio from any Source, with what BitMachine last knew about it, so it can still be shown
 /// when its Source can't play it.
 public struct Track: Hashable, Codable, Sendable {
@@ -68,6 +81,8 @@ public struct Playlist: Equatable, Codable, Sendable {
         didSet { if shuffle != oldValue { reshuffle() } }
     }
     public var repeats = false
+    /// The Server Playlist this Playlist was opened from, if it was: Save to Server writes back there.
+    public var serverPlaylist: ServerPlaylistReference?
     /// The order shuffle plays the entries in, fixed until the Playlist changes or shuffle is turned on again.
     private var shuffleOrder: [PlaylistEntry.ID] = []
     private var seed: UInt64
@@ -143,6 +158,23 @@ public struct Playlist: Equatable, Codable, Sendable {
         entries = []
         current = nil
         shuffleOrder = []
+        serverPlaylist = nil
+    }
+
+    /// Opens a Server Playlist: a copy of its Tracks replaces the Playlist, which remembers where they came from.
+    public mutating func open(_ tracks: [Track], from playlist: ServerPlaylistReference) {
+        removeAll()
+        _ = append(tracks)
+        serverPlaylist = playlist
+    }
+
+    /// The songs from `server`, in Playlist order: what saving to one of its Server Playlists sends. Other Sources'
+    /// Tracks are left out, since that Server can't hold them.
+    public func songs(on server: String) -> [String] {
+        entries.compactMap {
+            guard case let .server(server: id, song: song) = $0.track.source, id == server else { return nil }
+            return song
+        }
     }
 
     public mutating func select(_ id: PlaylistEntry.ID) {

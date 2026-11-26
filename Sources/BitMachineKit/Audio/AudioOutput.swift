@@ -189,6 +189,9 @@ public final class AudioOutput: @unchecked Sendable {
         return fileOffset + Double(playerTime.sampleTime) / playerTime.sampleRate
     }
 
+    /// Whether a file is loaded (playing or paused).
+    public var hasFile: Bool { file != nil }
+
     public func pauseFile() { filePlayer.pause() }
     public func resumeFile() { filePlayer.play() }
 

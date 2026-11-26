@@ -2,7 +2,7 @@ import BitMachineKit
 import Foundation
 
 /// Owns the Playlist and what the Main Window shows, and hands the current Track to the engine for its Source
-/// (ADR 0001). Apple Music, Local Files and Stations have engines so far; Server Tracks are marked unavailable for now.
+/// (ADR 0001): Apple Music, Local Files, Servers (fetched into a cache, then played as files) and Stations.
 @MainActor
 final class Player {
     private(set) var playlist = Playlist() {
@@ -82,6 +82,7 @@ final class Player {
     private(set) lazy var stations = StationEngine(output: output)
     let directory = StationDirectory()
     let musicFolders = MusicFolders()
+    let servers = Servers()
 
     /// The Stations on the Radio Window's preset buttons, saved.
     var presets = Player.savedPresets() {
@@ -257,6 +258,25 @@ final class Player {
 
     func move(_ ids: [PlaylistEntry.ID], to index: Int) { playlist.move(ids, to: index) }
 
+    // MARK: Server Playlists
+
+    /// Opens a Server Playlist: a copy of its Tracks replaces the Playlist, stopped at its first Track.
+    func openServerPlaylist(_ id: String, on server: String) async throws {
+        let (name, tracks) = try await servers.client(for: server).playlist(id)
+        stop()
+        playlist.open(tracks, from: ServerPlaylistReference(server: server, id: id, name: name))
+        showCurrent()
+    }
+
+    /// Saves the Playlist back over the Server Playlist it was opened from: that Server's Tracks, in Playlist order.
+    /// Returns how many were saved and how many Tracks from elsewhere were left out.
+    func saveToServer() async throws -> (saved: Int, leftOut: Int) {
+        guard let reference = playlist.serverPlaylist else { return (0, 0) }
+        let songs = playlist.songs(on: reference.server)
+        try await servers.client(for: reference.server).replacePlaylist(reference.id, songs: songs)
+        return (songs.count, playlist.entries.count - songs.count)
+    }
+
     // MARK: Transport
 
     func press(_ button: TransportButton) {
@@ -322,7 +342,18 @@ final class Player {
                     router.stop()
                     stations.stop()
                     try playFile(url, generation: generation)
-                case .server: throw PlayError.noEngine
+                case let .server(server, song):
+                    appleMusic.stop()
+                    router.stop()
+                    stations.stop()
+                    // The last Track mustn't play on under this one's title while this one is fetched.
+                    output.stopFile()
+                    let url = try await servers.file(server: server, song: song)
+                    guard generation == self.generation else { return }
+                    let paused = state.playback == .paused
+                    try playFile(url, generation: generation)
+                    if paused { output.pauseFile() }
+                    readAhead()
                 }
                 guard generation == self.generation else { return }
                 playlist.markUnavailable(entry.id, reason: nil)
@@ -336,9 +367,13 @@ final class Player {
         }
     }
 
-    /// Whether a Local File is what's playing (or paused).
-    private var playingFile: Bool {
-        state.playback != .stopped && playlist.currentEntry?.track.source.isLocalFile == true
+    /// Whether the file player is what's playing (or paused): a Local File, or a Server Track fetched into the cache.
+    private var playingFile: Bool { state.playback != .stopped && output.hasFile }
+
+    /// Fetches the next Server Track, so it starts at once.
+    private func readAhead() {
+        guard let next = playlist.next(), case let .server(server, song) = next.track.source else { return }
+        servers.readAhead(server: server, song: song)
     }
 
     private func playFile(_ url: URL, generation: Int) throws {
@@ -356,15 +391,10 @@ final class Player {
         state.kbps = info.duration > 0 ? Int((Double(bytes) * 8 / info.duration / 1000).rounded()) : nil
     }
 
-    private enum PlayError: LocalizedError {
-        case noEngine
-        var errorDescription: String? { "BitMachine can't play this kind of Track yet" }
-    }
-
     private func resume() {
         if state.isLive, let current = playlist.current { play(current); return }
         state.playback = .playing
-        if playlist.currentEntry?.track.source.isLocalFile == true { output.resumeFile(); return }
+        if output.hasFile { output.resumeFile(); return }
         Task { try? await appleMusic.resume() }
     }
 

@@ -1,0 +1,83 @@
+{
+ "subsonic-response": {
+  "status": "ok",
+  "version": "1.16.1",
+  "type": "navidrome",
+  "serverVersion": "0.64.2 (10114574)",
+  "openSubsonic": true,
+  "artist": {
+   "id": "1tUo4xtWhhHZda5CIJsmpE",
+   "name": "Alpha",
+   "coverArt": "ar-1tUo4xtWhhHZda5CIJsmpE_1f7860f8452c7892",
+   "albumCount": 2,
+   "artistImageUrl": "http://server.example/img",
+   "musicBrainzId": "",
+   "sortName": "alpha",
+   "roles": [
+    "maincredit",
+    "albumartist",
+    "artist"
+   ],
+   "album": [
+    {
+     "id": "250gDallkErOb2rdSVeyi4",
+     "name": "First",
+     "artist": "Alpha",
+     "artistId": "1tUo4xtWhhHZda5CIJsmpE",
+     "songCount": 2,
+     "duration": 6,
+     "created": "2026-11-26T17:07:54.996690838Z",
+     "userRating": 0,
+     "genres": [],
+     "musicBrainzId": "",
+     "isCompilation": false,
+     "sortName": "first",
+     "discTitles": [],
+     "originalReleaseDate": {},
+     "releaseDate": {},
+     "releaseTypes": [],
+     "recordLabels": [],
+     "moods": [],
+     "artists": [
+      {
+       "id": "1tUo4xtWhhHZda5CIJsmpE",
+       "name": "Alpha"
+      }
+     ],
+     "displayArtist": "Alpha",
+     "explicitStatus": "",
+     "version": ""
+    },
+    {
+     "id": "1KG1IDDbyeZgcl0RHE3vaH",
+     "name": "Second",
+     "artist": "Alpha",
+     "artistId": "1tUo4xtWhhHZda5CIJsmpE",
+     "songCount": 1,
+     "duration": 2,
+     "created": "2026-11-26T17:07:54.994514102Z",
+     "userRating": 0,
+     "genres": [],
+     "musicBrainzId": "",
+     "isCompilation": false,
+     "sortName": "second",
+     "discTitles": [],
+     "originalReleaseDate": {},
+     "releaseDate": {},
+     "releaseTypes": [],
+     "recordLabels": [],
+     "moods": [],
+     "artists": [
+      {
+       "id": "1tUo4xtWhhHZda5CIJsmpE",
+       "name": "Alpha"
+      }
+     ],
+     "displayArtist": "Alpha",
+     "explicitStatus": "",
+     "version": ""
+    }
+   ]
+  }
+ }
+}

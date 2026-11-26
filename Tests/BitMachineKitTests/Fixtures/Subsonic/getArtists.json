@@ -1,0 +1,89 @@
+{
+ "subsonic-response": {
+  "status": "ok",
+  "version": "1.16.1",
+  "type": "navidrome",
+  "serverVersion": "0.64.2 (10114574)",
+  "openSubsonic": true,
+  "artists": {
+   "index": [
+    {
+     "name": "A",
+     "artist": [
+      {
+       "id": "1tUo4xtWhhHZda5CIJsmpE",
+       "name": "Alpha",
+       "coverArt": "ar-1tUo4xtWhhHZda5CIJsmpE_1f7860f8452c7892",
+       "albumCount": 2,
+       "artistImageUrl": "http://server.example/img",
+       "musicBrainzId": "",
+       "sortName": "alpha",
+       "roles": [
+        "albumartist",
+        "artist",
+        "maincredit"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B",
+     "artist": [
+      {
+       "id": "2m8abVhdQft5jLURr6n3wj",
+       "name": "Beta",
+       "coverArt": "ar-2m8abVhdQft5jLURr6n3wj_5480fb813b12d9ca",
+       "albumCount": 1,
+       "artistImageUrl": "http://server.example/img",
+       "musicBrainzId": "",
+       "sortName": "beta",
+       "roles": [
+        "albumartist",
+        "artist",
+        "maincredit"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "G",
+     "artist": [
+      {
+       "id": "4oErmy0d6AR0CTLwaRwd3p",
+       "name": "Gamma",
+       "coverArt": "ar-4oErmy0d6AR0CTLwaRwd3p_b03cb8609a850fe3",
+       "albumCount": 1,
+       "artistImageUrl": "http://server.example/img",
+       "musicBrainzId": "",
+       "sortName": "gamma",
+       "roles": [
+        "albumartist",
+        "artist",
+        "maincredit"
+       ]
+      }
+     ]
+    },
+    {
+     "name": "[Unknown]",
+     "artist": [
+      {
+       "id": "6QiT23Pg8GAJHZop58uMKH",
+       "name": "[Unknown Artist]",
+       "albumCount": 1,
+       "musicBrainzId": "",
+       "sortName": "[unknown artist]",
+       "roles": [
+        "albumartist",
+        "artist",
+        "maincredit"
+       ]
+      }
+     ]
+    }
+   ],
+   "lastModified": 1795712886000,
+   "ignoredArticles": "The El La Los Las Le Les Os As O A"
+  }
+ }
+}

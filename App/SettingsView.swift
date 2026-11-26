@@ -10,6 +10,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            ServersSettings(servers: AppDelegate.shared.player.servers)
             Section {
                 Toggle("Song title in Intel One Mono", isOn: $titleInIntelOneMono)
                 Toggle("Lists in the skin's own font", isOn: $listsInSkinFont)
