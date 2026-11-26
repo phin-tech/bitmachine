@@ -47,8 +47,8 @@ public struct SpectrumAnalyzer {
             let last = max(min(Int(to / binWidth), magnitudes.count - 1), first)
             let peak = magnitudes[first ... last].max() ?? 0
             let db = 20 * log10(Double(max(peak * scale, 1e-9)))
-            // -60 dB is an empty bar, 0 dB a full one.
-            return min(max((db + 60) / 60, 0), 1)
+            // -48 dB is an empty bar, 0 dB a full one.
+            return min(max((db + 48) / 48, 0), 1)
         }
     }
 }

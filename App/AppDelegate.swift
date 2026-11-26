@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private var main: MainWindowController!
     private var library: LibraryWindowController!
+    private let permissions = PermissionsWindowController()
 
     private static let skinKey = "skinPath"
     private static let doubleSizeKey = "doubleSize"
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         player.onPlaylistChange = { [weak self] in self?.library.model.refreshPlaylist() }
         main.isDoubleSize = UserDefaults.standard.bool(forKey: Self.doubleSizeKey)
         main.show()
+        permissions.showAtLaunchIfNeeded()
         #if !APP_STORE
         UpdateChecker.shared.start()
         #endif
@@ -95,6 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: Windows
+
+    @objc func showPermissions(_: Any?) {
+        permissions.show()
+    }
 
     @objc func showLibrary(_: Any?) {
         library.show()

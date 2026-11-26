@@ -40,6 +40,7 @@ struct BitMachineApp: App {
         #if !APP_STORE
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") { UpdateChecker.shared.checkForUpdates() }
+            Button("Permissions…") { AppDelegate.shared.showPermissions(nil) }
         }
         #endif
     }

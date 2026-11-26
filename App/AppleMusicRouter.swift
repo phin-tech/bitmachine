@@ -35,7 +35,17 @@ final class AppleMusicRouter {
 
     /// Call once MusicKit is playing. Finds BitMachine's player process and taps it, unless it's tapped already.
     func start() async {
-        if case .unavailable = state { return }
+        switch AudioCapturePermission.status {
+        case .denied:
+            stop()
+            state = .unavailable("allow System Audio Recording in BitMachine ▸ Permissions…")
+            return
+        case .allowed:
+            // Allowed since the tap last gave up: try again.
+            if case .unavailable = state { state = .off }
+        case .notAsked:
+            if case .unavailable = state { return }
+        }
         guard let process = await findPlayerProcess() else {
             log.error("no \(Self.playerProcess, privacy: .public) is playing for BitMachine; Apple Music plays unrouted")
             return
@@ -75,7 +85,7 @@ final class AppleMusicRouter {
             guard let self, !Task.isCancelled, !heard.withLock({ $0 }) else { return }
             self.log.error("the tap heard nothing in 3 s; letting go (System Audio Recording not allowed?)")
             self.stop()
-            self.state = .unavailable("BitMachine isn't allowed to record system audio")
+            self.state = .unavailable("allow System Audio Recording in BitMachine ▸ Permissions…")
         }
     }
 
