@@ -81,6 +81,7 @@ final class Player {
     private(set) lazy var router = AppleMusicRouter(output: output)
     private(set) lazy var stations = StationEngine(output: output)
     let directory = StationDirectory()
+    let musicFolders = MusicFolders()
 
     /// The Stations on the Radio Window's preset buttons, saved.
     var presets = Player.savedPresets() {

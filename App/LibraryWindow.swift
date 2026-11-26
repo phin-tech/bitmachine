@@ -1,14 +1,16 @@
 import AppKit
 import BitMachineKit
+import Combine
 import SwiftUI
 
-/// What the Library Window shows: search results from a Source, and (until the skinned Playlist Window exists) the
-/// Playlist itself.
+/// What the Library Window shows: search results from the Apple Music Catalog or Library, or the Local Files in the
+/// Music Folders by artist and album.
 @MainActor
 final class LibraryModel: ObservableObject {
     enum Scope: String, CaseIterable, Identifiable {
         case catalog = "Apple Music"
         case library = "My Library"
+        case files = "My Files"
         var id: String { rawValue }
     }
 
@@ -21,12 +23,56 @@ final class LibraryModel: ObservableObject {
     @Published var current: PlaylistEntry.ID?
     @Published var colors = PlaylistColors.standard
 
+    /// In My Files: the artist and album picked ("" for all).
+    @Published var artist = "" { didSet { if artist != oldValue { album = ""; refreshFiles() } } }
+    @Published var album = "" { didSet { if album != oldValue { refreshFiles() } } }
+
     let player: Player
+    var musicFolders: MusicFolders { player.musicFolders }
     private var searchTask: Task<Void, Never>?
+    private var watching: Set<AnyCancellable> = []
 
     init(player: Player) {
         self.player = player
         refreshPlaylist()
+        // The index changes as the folders are read; My Files follows it.
+        player.musicFolders.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+            Task { @MainActor in self?.refreshFiles() }
+        }.store(in: &watching)
+    }
+
+    var artists: [String] { musicFolders.index.artists }
+    var albums: [String] { musicFolders.index.albums(by: artist.isEmpty ? nil : artist) }
+
+    func scopeChanged() {
+        results = []
+        status = ""
+        if scope == .files { refreshFiles() } else if scope == .library || !query.isEmpty { search() }
+    }
+
+    /// My Files filters as you type; the other scopes search on Return.
+    func queryChanged() { if scope == .files { refreshFiles() } }
+
+    func refreshFiles() {
+        guard scope == .files else { return }
+        let index = musicFolders.index
+        if !artist.isEmpty, !index.artists.contains(artist) { artist = "" }
+        results = index.tracks(artist: artist.isEmpty ? nil : artist, album: album.isEmpty ? nil : album, filter: query)
+        let folders = musicFolders.folders.count
+        status = musicFolders.isScanning ? "Reading your Music Folders…"
+            : folders == 0 ? "" : "\(results.count) songs in \(folders) Music Folder\(folders == 1 ? "" : "s")"
+    }
+
+    func chooseMusicFolders() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "BitMachine reads the music in these folders, and keeps up as they change."
+        guard panel.runModal() == .OK else { return }
+        musicFolders.add(panel.urls)
     }
 
     func refreshPlaylist() {
@@ -46,6 +92,9 @@ final class LibraryModel: ObservableObject {
                 case .catalog:
                     guard !term.isEmpty else { results = []; status = ""; return }
                     results = try await player.appleMusic.search(term)
+                case .files:
+                    refreshFiles()
+                    return
                 case .library:
                     let all = try await player.appleMusic.librarySongs(limit: 500)
                     results = term.isEmpty ? all : all.filter {
@@ -89,11 +138,24 @@ struct LibraryView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 220)
-                    TextField(model.scope == .catalog ? "Search Apple Music" : "Filter your library", text: $model.query)
+                    .fixedSize()
+                    TextField(placeholder, text: $model.query)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { model.search() }
-                    if model.isSearching { ProgressView().controlSize(.small) }
+                    if model.isSearching || model.scope == .files && model.musicFolders.isScanning {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                if model.scope == .files {
+                    if model.musicFolders.folders.isEmpty {
+                        noMusicFolders
+                    } else {
+                        HStack(spacing: 6) {
+                            column("All Artists", model.artists, selection: $model.artist)
+                            column("All Albums", model.albums, selection: $model.album)
+                        }
+                        .frame(height: 150)
+                    }
                 }
                 list(count: model.results.count, selection: $selectedResults) { i in
                     let track = model.results[i]
@@ -104,6 +166,7 @@ struct LibraryView: View {
                 HStack {
                     Text(model.status).font(.caption).foregroundStyle(.secondary)
                     Spacer()
+                    if model.scope == .files { musicFoldersMenu }
                     Button("Add to Playlist") {
                         model.add(selectedResults.sorted().map { model.results[$0] }, play: false)
                     }
@@ -115,6 +178,60 @@ struct LibraryView: View {
 
         }
         .frame(minWidth: 520, minHeight: 300)
+        .onChange(of: model.scope) { _, _ in
+            selectedResults = []
+            model.scopeChanged()
+        }
+        .onChange(of: model.query) { _, _ in model.queryChanged() }
+        .onChange(of: model.results) { _, _ in selectedResults = [] }
+    }
+
+    private var placeholder: String {
+        switch model.scope {
+        case .catalog: "Search Apple Music"
+        case .library: "Filter your library"
+        case .files: "Filter your files"
+        }
+    }
+
+    private var noMusicFolders: some View {
+        VStack(spacing: 8) {
+            Text("Give BitMachine the folders your music is in. It reads their tags, and keeps up as they change.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button("Add a Music Folder…") { model.chooseMusicFolders() }
+        }
+        .padding()
+    }
+
+    private var musicFoldersMenu: some View {
+        Menu("Music Folders") {
+            Button("Add a Music Folder…") { model.chooseMusicFolders() }
+            Button("Read Them Again") { model.musicFolders.rescan() }
+            if !model.musicFolders.folders.isEmpty {
+                Divider()
+                ForEach(model.musicFolders.folders, id: \.self) { folder in
+                    Button("Remove “\(folder.lastPathComponent)”") { model.musicFolders.remove(folder) }
+                }
+            }
+        }
+        .fixedSize()
+    }
+
+    /// A column of names with an "all" row at the top; "" stands for all.
+    private func column(_ all: String, _ names: [String], selection: Binding<String>) -> some View {
+        List(selection: Binding<String?>(get: { selection.wrappedValue }, set: { selection.wrappedValue = $0 ?? "" })) {
+            ForEach([""] + names, id: \.self) { name in
+                Text(name.isEmpty ? all : name)
+                    .lineLimit(1)
+                    .font(font)
+                    .foregroundStyle(text)
+                    .listRowBackground(selection.wrappedValue == name ? self.selection : background)
+                    .tag(Optional(name))
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(background)
     }
 
     private func row(_ title: String, album: String, duration: TimeInterval?, colour: Color) -> some View {
