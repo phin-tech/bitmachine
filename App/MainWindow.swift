@@ -19,6 +19,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         didSet { resize() }
     }
 
+    /// Told after the window changes size, so the windows docked to it can follow.
+    var onResize: (() -> Void)?
+
     init(skin: Skin, player: Player) {
         self.skin = skin
         self.player = player
@@ -63,6 +66,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         var state = player.state
         state.isFocused = window.isKeyWindow
         state.playlistOpen = AppDelegate.shared?.isLibraryVisible ?? false
+        state.equalizerOpen = AppDelegate.shared?.isEqualizerVisible ?? false
         view.image = SkinRenderer.renderMainWindow(state, skin: skin)
         view.scale = scale
         view.needsDisplay = true
@@ -82,6 +86,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         frame.origin.y = top - frame.height
         window.setFrame(frame, display: true)
         redraw()
+        onResize?()
     }
 
     func windowDidBecomeKey(_: Notification) { redraw() }
@@ -98,7 +103,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         case let .transport(button): player.press(button)
         case .shuffle: player.state.shuffle.toggle()
         case .repeats: player.state.repeats.toggle()
-        case .equalizer: player.state.equalizerOpen.toggle()
+        case .equalizer: AppDelegate.shared.toggleEqualizer(nil)
         case .playlist:
             // Until the skinned Playlist Window exists, the Playlist lives in the Library Window.
             AppDelegate.shared.showLibrary(nil)

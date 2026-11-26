@@ -31,6 +31,8 @@ struct BitMachineApp: App {
                     .keyboardShortcut("d", modifiers: .control)
                 Button("Windowshade") { AppDelegate.shared.toggleWindowshade(nil) }
                     .keyboardShortcut("w", modifiers: .control)
+                Button("Equalizer") { AppDelegate.shared.toggleEqualizer(nil) }
+                    .keyboardShortcut("g", modifiers: .option)
                 Divider()
             }
         }

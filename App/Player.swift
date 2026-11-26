@@ -21,6 +21,33 @@ final class Player {
 
     var onChange: (() -> Void)?
     var onPlaylistChange: (() -> Void)?
+    var onEqualizerChange: (() -> Void)?
+
+    private static let equalizerKey = "equalizer"
+
+    /// The equalizer, applied to everything BitMachine plays, and saved.
+    var equalizer = Player.savedEqualizer() {
+        didSet {
+            guard equalizer != oldValue else { return }
+            applyEqualizer()
+            if let data = try? JSONEncoder().encode(equalizer) {
+                UserDefaults.standard.set(data, forKey: Self.equalizerKey)
+            }
+            onEqualizerChange?()
+        }
+    }
+
+    private static func savedEqualizer() -> EqualizerSettings {
+        guard let data = UserDefaults.standard.data(forKey: equalizerKey),
+              let settings = try? JSONDecoder().decode(EqualizerSettings.self, from: data) else { return EqualizerSettings() }
+        return settings
+    }
+
+    private func applyEqualizer() {
+        output.equalizerOn = equalizer.on
+        output.preamp = equalizer.preamp
+        output.gains = equalizer.gains
+    }
 
     let appleMusic = AppleMusicEngine()
     let output = AudioOutput()
@@ -39,6 +66,7 @@ final class Player {
         self.state = state
         appleMusic.onEnded = { [weak self] in self?.trackEnded() }
         output.volume = state.volume
+        applyEqualizer()
         router.onStateChange = { [weak self] state in
             guard let self, case let .unavailable(reason) = state else { return }
             // Once: the music plays on, but BitMachine's volume and equalizer can't reach it.

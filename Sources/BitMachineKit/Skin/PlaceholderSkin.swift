@@ -60,7 +60,9 @@ public enum PlaceholderSkin {
         case .shufrep: shufrep(c)
         case .volume, .balance: slider(c, balance: sheet == .balance)
         case .text: text(c)
-        case .eqmain, .eqEx, .pledit, .gen: c.fill(0, 0, w, h, Palette.body)
+        case .eqmain: equalizer(c)
+        case .eqEx: equalizerExtras(c)
+        case .pledit, .gen: c.fill(0, 0, w, h, Palette.body)
         }
         return c.image()
     }
@@ -183,6 +185,77 @@ public enum PlaceholderSkin {
             c.fill(x, 422, 14, 11, colour)
             c.bevel(x, 422, 14, 11, light: Palette.bodyLight, dark: Palette.bodyDark)
         }
+    }
+
+    static func equalizer(_ c: Canvas) {
+        // The window: a bevelled body, the graph's frame, and labels for the sliders.
+        c.bevel(0, 0, 275, 116, light: Palette.bodyLight, dark: Palette.bodyDark)
+        c.fill(84, 15, 117, 23, Palette.bodyDark)
+        c.text("preamp", 13, 104, Palette.bodyLight, background: Palette.body)
+        for (i, label) in ["60", "170", "310", "600", "1k", "3k", "6k", "12k", "14k", "16k"].enumerated() {
+            c.text(label, 78 + 18 * i + 7 - label.count * 5 / 2, 104, Palette.bodyLight, background: Palette.body)
+        }
+        c.text("+12", 47, 37, Palette.bodyLight, background: Palette.body)
+        c.text("0", 57, 66, Palette.bodyLight, background: Palette.body)
+        c.text("-12", 47, 95, Palette.bodyLight, background: Palette.body)
+        // Title bars: focused, then not.
+        for (y, colour) in [(134, Palette.accent), (149, Palette.accentDim)] {
+            c.fill(0, y, 275, 14, colour)
+            c.bevel(0, y, 275, 14, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.text("equalizer", 115, y + 4, Palette.glyph, background: colour)
+            c.box(254, y + 3, 9, 9, Palette.button, glyph: "-")
+            c.box(264, y + 3, 9, 9, Palette.button, glyph: "x")
+        }
+        c.box(0, 116, 9, 9, Palette.button, glyph: "x")
+        c.box(0, 125, 9, 9, Palette.buttonDown, glyph: "x")
+        // ON and AUTO: off, off pressed, on, on pressed.
+        for (x, label, on, pressed) in [(10, "on", false, false), (128, "on", false, true), (69, "on", true, false),
+                                        (187, "on", true, true), (36, "auto", false, false),
+                                        (154, "auto", false, true), (95, "auto", true, false), (213, "auto", true, true)] {
+            let w = label == "on" ? 26 : 32
+            let face = pressed ? Palette.buttonDown : Palette.button
+            c.fill(x, 119, w, 12, face)
+            c.bevel(x, 119, w, 12, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.text(label, x + (w - label.count * 5) / 2, 122, on ? Palette.amber : Palette.glyph, background: face)
+        }
+        // The slider backgrounds: 28 frames from -12 dB to +12 dB, lit from the middle.
+        for frame in 0 ..< 28 {
+            let x = 13 + (frame % 14) * 15, y = 164 + (frame / 14) * 65
+            c.fill(x, y, 14, 63, Palette.bodyDark)
+            c.fill(x + 6, y + 1, 2, 61, Palette.button)
+            let level = (frame - 14) * 30 / 14
+            if level > 0 { c.fill(x + 6, y + 31 - level, 2, level, Palette.amber) }
+            if level < 0 { c.fill(x + 6, y + 31, 2, -level, Palette.amberDim) }
+        }
+        for (y, colour) in [(164, Palette.button), (176, Palette.accent)] {
+            c.fill(0, y, 11, 11, colour)
+            c.bevel(0, y, 11, 11, light: Palette.bodyLight, dark: Palette.bodyDark)
+        }
+        for (y, face) in [(164, Palette.button), (176, Palette.buttonDown)] {
+            c.fill(224, y, 44, 12, face)
+            c.bevel(224, y, 44, 12, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.text("presets", 229, y + 3, Palette.glyph, background: face)
+        }
+        // The graph, its line colours (top to bottom) and the preamp line.
+        c.fill(0, 294, 113, 19, Palette.display)
+        c.fill(0, 303, 113, 1, RGB(30, 34, 32))
+        for row in 0 ..< 19 {
+            let t = Double(row) / 18
+            c.fill(115, 294 + row, 1, 1, RGB(255, UInt8(230 - 120 * t), UInt8(140 * (1 - t))))
+        }
+        c.fill(0, 314, 113, 1, Palette.amberDim)
+    }
+
+    static func equalizerExtras(_ c: Canvas) {
+        for (y, colour) in [(0, Palette.accent), (15, Palette.accentDim)] {
+            c.fill(0, y, 275, 14, colour)
+            c.bevel(0, y, 275, 14, light: Palette.bodyLight, dark: Palette.bodyDark)
+            c.text("equalizer", 115, y + 4, Palette.glyph, background: colour)
+        }
+        c.box(1, 38, 9, 9, Palette.buttonDown, glyph: "-")
+        c.box(1, 47, 9, 9, Palette.buttonDown, glyph: "+")
+        c.box(11, 38, 9, 9, Palette.button, glyph: "x")
+        c.box(11, 47, 9, 9, Palette.buttonDown, glyph: "x")
     }
 
     static func text(_ c: Canvas) {

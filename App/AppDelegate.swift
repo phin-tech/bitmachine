@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private var main: MainWindowController!
     private var library: LibraryWindowController!
+    private var equalizer: EqualizerWindowController!
+    private static let equalizerOpenKey = "equalizerOpen"
     private let permissions = PermissionsWindowController()
 
     private static let skinKey = "skinPath"
@@ -20,10 +22,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let skin = savedSkin() ?? defaultSkin
         main = MainWindowController(skin: skin, player: player)
         library = LibraryWindowController(player: player)
+        equalizer = EqualizerWindowController(skin: skin, player: player)
+        equalizer.onVisibilityChange = { [weak self] in
+            guard let self else { return }
+            UserDefaults.standard.set(self.equalizer.isVisible, forKey: Self.equalizerOpenKey)
+            self.main.redraw()
+        }
+        main.onResize = { [weak self] in
+            guard let self, self.equalizer.isVisible else { return }
+            self.equalizer.dock(below: self.main.window)
+        }
         library.use(skin)
         player.onPlaylistChange = { [weak self] in self?.library.model.refreshPlaylist() }
         main.isDoubleSize = UserDefaults.standard.bool(forKey: Self.doubleSizeKey)
+        equalizer.isDoubleSize = main.isDoubleSize
         main.show()
+        if UserDefaults.standard.bool(forKey: Self.equalizerOpenKey) { equalizer.show(below: main.window) }
         permissions.showAtLaunchIfNeeded()
         #if !APP_STORE
         UpdateChecker.shared.start()
@@ -75,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let skin = try Skin.load(contentsOf: url, fallback: defaultSkin)
             main.use(skin)
             library.use(skin)
+            equalizer.use(skin)
             UserDefaults.standard.set(url.path, forKey: Self.skinKey)
         } catch {
             let alert = NSAlert()
@@ -87,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func useDefaultSkin(_: Any?) {
         main.use(defaultSkin)
         library.use(defaultSkin)
+        equalizer.use(defaultSkin)
         UserDefaults.standard.removeObject(forKey: Self.skinKey)
     }
 
@@ -108,10 +124,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     var isLibraryVisible: Bool { library?.window.isVisible ?? false }
 
+    @objc func toggleEqualizer(_: Any?) {
+        if equalizer.isVisible { equalizer.hide() } else { equalizer.show(below: main.window) }
+    }
+
+    var isEqualizerVisible: Bool { equalizer?.isVisible ?? false }
+
     // MARK: View
 
     @objc func toggleDoubleSize(_: Any?) {
         main.isDoubleSize.toggle()
+        equalizer.isDoubleSize = main.isDoubleSize
+        if equalizer.isVisible { equalizer.dock(below: main.window) }
         UserDefaults.standard.set(main.isDoubleSize, forKey: Self.doubleSizeKey)
     }
 
