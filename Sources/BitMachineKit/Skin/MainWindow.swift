@@ -33,6 +33,8 @@ public struct MainWindowState: Equatable, Sendable {
     public var seeking: Double?
     /// The analyzer, while there's something to show.
     public var visualizer: VisualizerBars?
+    /// The title in the Skin's pixel font; when false, the window leaves it out for the app to draw in a real font.
+    public var titleInPixelFont = true
 
     public init() {}
 
@@ -170,7 +172,9 @@ public enum MainWindowLayout {
             if state.showsRemaining { put(MainSprites.minusSign, time.minX - 1, time.minY + 6) }
         }
 
-        text(&out, scrolled(state.title, by: state.titleScroll, width: Int(title.width) / 5), at: title.origin)
+        if state.titleInPixelFont {
+            text(&out, scrolled(state.title, by: state.titleScroll, width: Int(title.width) / 5), at: title.origin)
+        }
         if state.playback != .stopped {
             if let rate = state.kbps { text(&out, rightAligned(String(min(rate, 999)), 3), at: Self.kbps.origin) }
             if let rate = state.khz { text(&out, rightAligned(String(min(rate, 99)), 2), at: Self.khz.origin) }

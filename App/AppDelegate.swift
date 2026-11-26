@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         Self.shared = self
+        Fonts.registerBundled()
         let skin = savedSkin() ?? defaultSkin
         main = MainWindowController(skin: skin, player: player)
         library = LibraryWindowController(player: player)

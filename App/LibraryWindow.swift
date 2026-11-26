@@ -75,7 +75,11 @@ struct LibraryView: View {
     private var currentText: Color { Color(cgColor: model.colors.current.cgColor) }
     private var background: Color { Color(cgColor: model.colors.normalBackground.cgColor) }
     private var selection: Color { Color(cgColor: model.colors.selectedBackground.cgColor) }
-    private let font = Font.system(size: 11, design: .monospaced)
+    @AppStorage(Fonts.listsInSkinFontKey) private var listsInSkinFont = false
+    private var font: Font {
+        _ = listsInSkinFont  // redraws when the setting changes
+        return Fonts.list(skinFont: model.colors.font, size: 12)
+    }
 
     var body: some View {
         VSplitView {

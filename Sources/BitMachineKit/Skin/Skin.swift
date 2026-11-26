@@ -61,6 +61,38 @@ public final class Skin: @unchecked Sendable {
         return image
     }
 
+    /// The Main Window's text colours, read from the text font (`text.bmp`): its background, and the colour most of
+    /// its letters are drawn in. For drawing the title in a real font that matches the Skin.
+    public var textColors: (text: RGB, background: RGB) {
+        lock.lock()
+        if let cached = cachedTextColors { lock.unlock(); return cached }
+        lock.unlock()
+        let colors = Self.sampleTextColors(image(Sprite(.text, 0, 0, 135, 6)))
+        lock.lock(); cachedTextColors = colors; lock.unlock()
+        return colors
+    }
+
+    private var cachedTextColors: (text: RGB, background: RGB)?
+
+    static func sampleTextColors(_ letters: CGImage?) -> (text: RGB, background: RGB) {
+        let fallback = (text: RGB(0, 255, 0), background: RGB(0, 0, 0))
+        guard let letters, let context = CGContext(
+            data: nil, width: letters.width, height: letters.height, bitsPerComponent: 8,
+            bytesPerRow: letters.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return fallback }
+        context.draw(letters, in: CGRect(x: 0, y: 0, width: letters.width, height: letters.height))
+        guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return fallback }
+        var counts: [RGB: Int] = [:]
+        for i in 0 ..< letters.width * letters.height {
+            counts[RGB(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]), default: 0] += 1
+        }
+        // The background is the commonest colour; the text, the commonest of the rest.
+        let ranked = counts.sorted { $0.value > $1.value }.map(\.key)
+        guard let background = ranked.first else { return fallback }
+        return (ranked.dropFirst().first ?? fallback.text, background)
+    }
+
     // MARK: Loading
 
     public enum LoadError: Error, Equatable {

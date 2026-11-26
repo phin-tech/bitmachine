@@ -39,6 +39,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if !window.setFrameUsingName("MainWindow") { window.center() }
         view.controller = self
         player.onChange = { [weak self] in self?.redraw() }
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) {
+            [weak self] _ in MainActor.assumeIsolated { self?.redraw() }
+        }
         resize()
     }
 
@@ -67,6 +70,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         state.isFocused = window.isKeyWindow
         state.playlistOpen = AppDelegate.shared?.isLibraryVisible ?? false
         state.equalizerOpen = AppDelegate.shared?.isEqualizerVisible ?? false
+        state.titleInPixelFont = !UserDefaults.standard.bool(forKey: Fonts.titleKey)
+        view.title = state.titleInPixelFont || state.isWindowshade
+            ? nil : (state.title, state.titleScroll, skin.textColors.text, skin.textColors.background)
         view.image = SkinRenderer.renderMainWindow(state, skin: skin)
         view.scale = scale
         view.needsDisplay = true
@@ -131,6 +137,8 @@ final class MainWindowView: NSView {
     weak var controller: MainWindowController?
     var image: CGImage?
     var scale: CGFloat = 1
+    /// The title to draw in Intel One Mono over the Skin: text, how far it has scrolled (skin pixels), and colours.
+    var title: (text: String, scroll: Int, color: RGB, background: RGB)?
 
     /// The control the mouse went down on.
     private var tracking: MainWindowControl?
@@ -147,6 +155,33 @@ final class MainWindowView: NSView {
         context.scaleBy(x: 1, y: -1)
         context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width) * scale,
                                        height: CGFloat(image.height) * scale))
+        context.restoreGState()
+        if let title { drawTitle(title, in: context) }
+    }
+
+    /// The title in a real font, in the band the pixel title uses and a little above and below it, scrolling the
+    /// same way when it's too long to fit.
+    private func drawTitle(_ title: (text: String, scroll: Int, color: RGB, background: RGB), in context: CGContext) {
+        let area = MainWindowLayout.title
+        let band = CGRect(x: area.minX * scale, y: (area.minY - 2) * scale, width: area.width * scale, height: 10 * scale)
+        context.saveGState()
+        context.setFillColor(title.background.cgColor)
+        context.fill(band)
+        context.clip(to: band)
+        let font = NSFont(name: Fonts.intelOneMonoRegular, size: 8 * scale) ?? .monospacedSystemFont(ofSize: 8 * scale, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor(cgColor: title.color.cgColor) ?? .green]
+        let text = NSAttributedString(string: title.text, attributes: attributes)
+        let width = text.size().width
+        let y = band.minY + (band.height - text.size().height) / 2
+        if width <= band.width {
+            text.draw(at: CGPoint(x: band.minX, y: y))
+        } else {
+            let gap = NSAttributedString(string: "  ***  ", attributes: attributes).size().width
+            let period = width + gap
+            let offset = (CGFloat(title.scroll) * scale).truncatingRemainder(dividingBy: period)
+            text.draw(at: CGPoint(x: band.minX - offset, y: y))
+            text.draw(at: CGPoint(x: band.minX - offset + period, y: y))
+        }
         context.restoreGState()
     }
 

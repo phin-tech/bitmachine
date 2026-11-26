@@ -126,6 +126,20 @@ func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> RGB {
         #expect(pixel(skin.image(MainSprites.balanceThumb)!, 2, 2) == RGB(0, 255, 0))
     }
 
+    @Test func textColoursComeFromTheTextFont() {
+        let colors = placeholder.textColors
+        #expect(colors.background == PlaceholderSkin.Palette.display)
+        #expect(colors.text == PlaceholderSkin.Palette.amber)
+    }
+
+    @Test func aRealFontTitleLeavesThePixelTitleOut() {
+        var state = MainWindowState()
+        state.title = "abc"
+        #expect(MainWindowLayout.placements(for: state).contains { $0.sprite.sheet == .text })
+        state.titleInPixelFont = false
+        #expect(!MainWindowLayout.placements(for: state).contains { $0.sprite.sheet == .text })
+    }
+
     @Test func anEmptyArchiveIsNotASkin() {
         #expect(throws: Skin.LoadError.empty) { try Skin.load(files: ["readme.txt": Data()], name: "x", fallback: nil) }
     }

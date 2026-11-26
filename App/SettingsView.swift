@@ -5,8 +5,22 @@ struct SettingsView: View {
     @AppStorage(UpdateChecker.betaKey) private var betaUpdates = UpdateChecker.runningBeta
     #endif
 
+    @AppStorage(Fonts.titleKey) private var titleInIntelOneMono = false
+    @AppStorage(Fonts.listsInSkinFontKey) private var listsInSkinFont = false
+
     var body: some View {
         Form {
+            Section {
+                Toggle("Song title in Intel One Mono", isOn: $titleInIntelOneMono)
+                Toggle("Lists in the skin's own font", isOn: $listsInSkinFont)
+            } header: {
+                Text("Fonts")
+            } footer: {
+                Text("The Main Window's title is drawn in the skin's pixel font unless you choose Intel One Mono, which "
+                    + "is sharper and has every character. Lists use Intel One Mono unless the skin names a font you "
+                    + "have installed and you choose it here.")
+                    .foregroundStyle(.secondary)
+            }
             #if APP_STORE
             Section("General") {
                 Text("Nothing to set yet.").foregroundStyle(.secondary)

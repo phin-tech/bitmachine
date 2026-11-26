@@ -23,3 +23,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Intel One Mono
+
+BitMachine bundles the Intel One Mono font, unmodified (`App/Fonts/IntelOneMono-Regular.otf` and `-Bold.otf`, from
+release V1.5.0 of https://github.com/intel/intel-one-mono). It is licensed under the SIL Open Font License 1.1; the
+licence is in `App/Fonts/IntelOneMono-OFL.txt` and is shipped inside the app.
+
+Copyright 2023-2026 The Intel One Mono Project Authors (https://github.com/intel/intel-one-mono), with Reserved Font
+Name 'Intel'.
