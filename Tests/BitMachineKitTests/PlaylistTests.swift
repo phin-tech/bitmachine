@@ -85,6 +85,21 @@ private func tracks(_ titles: String...) -> [Track] {
         #expect(playlist.entries.map(\.track.title) == ["d", "c", "a", "b"])
     }
 
+    @Test func survivesSavingAndLoading() throws {
+        var playlist = Playlist(seed: 7)
+        let e = playlist.append(tracks("a", "b", "c") + [Track(source: .localFile(URL(fileURLWithPath: "/m/x.flac")), title: "x")])
+        playlist.select(e[2].id)
+        playlist.shuffle = true
+        playlist.repeats = true
+        playlist.markUnavailable(e[1].id, reason: "gone")
+        var loaded = try JSONDecoder().decode(Playlist.self, from: JSONEncoder().encode(playlist))
+        #expect(loaded == playlist)
+        #expect(loaded.currentEntry?.track.title == "c")
+        #expect(loaded.playOrder == playlist.playOrder)
+        loaded.clearUnavailable()
+        #expect(loaded.entries.allSatisfy { $0.unavailable == nil })
+    }
+
     @Test func displayTitle() {
         #expect(Track(source: .appleMusic(id: "1"), title: "One More Time", artist: "Daft Punk").displayTitle
             == "Daft Punk - One More Time")

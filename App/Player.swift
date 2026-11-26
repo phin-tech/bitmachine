@@ -6,15 +6,24 @@ import Foundation
 @MainActor
 final class Player {
     private(set) var playlist = Playlist() {
-        didSet { onPlaylistChange?() }
+        didSet {
+            onPlaylistChange?()
+            scheduleSave()
+        }
     }
 
     var state: MainWindowState {
         didSet {
             if state.shuffle != oldValue.shuffle { playlist.shuffle = state.shuffle }
             if state.repeats != oldValue.repeats { playlist.repeats = state.repeats }
-            if state.volume != oldValue.volume { output.volume = state.volume }
-            if state.balance != oldValue.balance { output.balance = state.balance }
+            if state.volume != oldValue.volume {
+                output.volume = state.volume
+                UserDefaults.standard.set(state.volume, forKey: Self.volumeKey)
+            }
+            if state.balance != oldValue.balance {
+                output.balance = state.balance
+                UserDefaults.standard.set(state.balance, forKey: Self.balanceKey)
+            }
             if state != oldValue { onChange?() }
         }
     }
@@ -63,7 +72,12 @@ final class Player {
         var state = MainWindowState()
         state.title = "BitMachine - press eject to find music"
         state.stereo = true
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.volumeKey) != nil { state.volume = defaults.double(forKey: Self.volumeKey) }
+        state.balance = defaults.double(forKey: Self.balanceKey)
         self.state = state
+        output.balance = state.balance
+        restorePlaylist()
         appleMusic.onEnded = { [weak self] in self?.trackEnded() }
         output.volume = state.volume
         applyEqualizer()
@@ -101,6 +115,49 @@ final class Player {
         next.titleScroll += 5
         if next.playback == .playing, next.seeking == nil { next.elapsed = appleMusic.elapsed }
         state = next
+    }
+
+    // MARK: Saving
+
+    private static let volumeKey = "volume"
+    private static let balanceKey = "balance"
+    private var saveTask: Task<Void, Never>?
+
+    static var playlistURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("BitMachine/Playlist.json")
+    }
+
+    /// The Playlist as it was at the last quit: the same current Track, shuffle and repeat, stopped.
+    private func restorePlaylist() {
+        guard let data = try? Data(contentsOf: Self.playlistURL),
+              var saved = try? JSONDecoder().decode(Playlist.self, from: data) else { return }
+        saved.clearUnavailable()
+        playlist = saved
+        state.shuffle = saved.shuffle
+        state.repeats = saved.repeats
+        showCurrent()
+    }
+
+    /// Saves soon after a change, so a burst of edits is written once.
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            save()
+        }
+    }
+
+    func save() {
+        saveTask?.cancel()
+        do {
+            try FileManager.default.createDirectory(at: Self.playlistURL.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try JSONEncoder().encode(playlist).write(to: Self.playlistURL, options: .atomic)
+        } catch {
+            NSLog("BitMachine: couldn't save the Playlist: \(error)")
+        }
     }
 
     // MARK: The Playlist

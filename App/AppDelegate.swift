@@ -58,6 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    func applicationWillTerminate(_: Notification) {
+        player.save()
+    }
+
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
         main.show()
         return false

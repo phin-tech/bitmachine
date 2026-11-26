@@ -117,6 +117,11 @@ public struct Playlist: Equatable, Codable, Sendable {
         entries[i].unavailable = reason
     }
 
+    /// Forgets every Unavailable mark, so each Track is tried again (after a relaunch, say).
+    public mutating func clearUnavailable() {
+        for i in entries.indices { entries[i].unavailable = nil }
+    }
+
     // MARK: Moving through it
 
     /// The entries in play order: as listed, or in the shuffle order.
