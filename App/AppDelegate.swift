@@ -1,5 +1,6 @@
 import AppKit
 import MusicKit
+import Network
 import BitMachineKit
 import UniformTypeIdentifiers
 
@@ -19,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let radioOpenKey = "radioOpen"
     private let permissions = PermissionsWindowController()
     let dock = Dock()
+    private(set) lazy var remoteHost = RemoteHost(player: player)
+    private(set) lazy var remoteController = RemoteController(player: player)
+    private lazy var remoteWindow = RemoteWindowController(controller: remoteController)
 
     private static let skinKey = "skinPath"
     private static let doubleSizeKey = "doubleSize"
@@ -69,10 +73,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || UserDefaults.standard.bool(forKey: Self.playlistOpenKey) { playlist.show() }
         if UserDefaults.standard.bool(forKey: Self.radioOpenKey) { radio.show() }
         permissions.showAtLaunchIfNeeded()
+        remoteHost.update()
         #if !APP_STORE
         UpdateChecker.shared.start()
         #endif
         #if DEBUG
+        // For agents testing Remote Control: BITMACHINE_CONTROL="<host>:<port>" controls the copy there at launch
+        // (one started with BITMACHINE_REMOTE_PORT), without Bonjour.
+        if let address = ProcessInfo.processInfo.environment["BITMACHINE_CONTROL"],
+           let colon = address.lastIndex(of: ":"), let port = NWEndpoint.Port(String(address[address.index(after: colon)...])) {
+            remoteController.connect(to: .hostPort(host: NWEndpoint.Host(String(address[..<colon])), port: port),
+                                     name: "Test Host")
+            // BITMACHINE_CONTROL_STATION="<stream URL>" then tunes the Host to it, once connected.
+            if let station = ProcessInfo.processInfo.environment["BITMACHINE_CONTROL_STATION"].flatMap(URL.init(string:)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                    self?.player.tune(to: Station(name: "Remote Test", url: station))
+                }
+            }
+        }
         // For agents testing playback: BITMACHINE_PLAY="<search>" plays the first Apple Music result at launch.
         // BITMACHINE_STATION="<stream URL>" tunes in to it at launch.
         if let address = ProcessInfo.processInfo.environment["BITMACHINE_STATION"], let url = URL(string: address) {
@@ -244,6 +262,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showPermissions(_: Any?) {
         permissions.show()
+    }
+
+    @objc func showRemote(_: Any?) {
+        remoteWindow.show()
     }
 
     @objc func showLibrary(_: Any?) {

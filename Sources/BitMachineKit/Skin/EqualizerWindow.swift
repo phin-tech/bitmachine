@@ -16,6 +16,14 @@ public struct EqualizerSettings: Codable, Equatable, Sendable {
 
     public init() {}
 
+    /// Within range, with ten bands: settings from another Mac are checked before use.
+    public func clamped() -> EqualizerSettings {
+        var settings = self
+        settings.preamp = min(max(preamp, -12), 12)
+        settings.gains = (gains + Array(repeating: 0, count: 10)).prefix(10).map { min(max($0, -12), 12) }
+        return settings
+    }
+
     public static let presets: [(name: String, gains: [Double])] = [
         ("Flat", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
         ("Bass Boost", [7, 6, 4, 2, 0, 0, 0, 0, 0, 0]),

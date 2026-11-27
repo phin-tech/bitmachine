@@ -61,6 +61,13 @@ public struct VisualizerBars: Equatable, Sendable {
 
     public init() {}
 
+    /// Bars as another copy drew them (a Remote Host's), held as they are.
+    public init(bars: [Double], peaks: [Double]) {
+        let count = SpectrumAnalyzer.barCount
+        self.bars = (bars + Array(repeating: 0, count: count)).prefix(count).map { min(max($0, 0), 1) }
+        self.peaks = (peaks + Array(repeating: 0, count: count)).prefix(count).map { min(max($0, 0), 1) }
+    }
+
     /// Takes new levels, `dt` seconds after the last.
     public mutating func update(_ levels: [Double], dt: Double) {
         for i in bars.indices {

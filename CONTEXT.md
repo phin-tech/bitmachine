@@ -131,3 +131,21 @@ _Avoid_: mini mode, collapsed, compact
 **Double Size**:
 A mode that draws every player window at twice its Skin's pixel size.
 _Avoid_: zoom, 2x, retina mode
+
+### Remote Control
+
+**Remote Control**:
+One BitMachine working another on the same network: its windows show the other Mac's music and Playlist and act on them, and the music plays on the other Mac.
+_Avoid_: remote mode, sync, casting
+
+**Host**:
+The BitMachine being controlled, whose music plays. A Mac is a Host only when its user allows it.
+_Avoid_: server (that's a music Server), target
+
+**Controller**:
+The BitMachine doing the controlling. Its own Playlist and settings are set aside while it controls a Host, and come back when it stops.
+_Avoid_: client, remote
+
+**Pairing Code**:
+The four digits a Host shows the first time a Controller connects, which the user types on the Controller to pair them. Once paired, the two remember each other.
+_Avoid_: PIN, password

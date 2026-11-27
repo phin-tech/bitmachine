@@ -3,7 +3,7 @@ import Foundation
 
 /// Everything the Main Window shows, as plain values.
 public struct MainWindowState: Equatable, Sendable {
-    public enum Playback: Sendable { case stopped, playing, paused }
+    public enum Playback: String, Codable, Sendable { case stopped, playing, paused }
 
     public var playback: Playback = .stopped
     /// Seconds into the Track.

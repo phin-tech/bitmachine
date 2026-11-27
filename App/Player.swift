@@ -9,12 +9,25 @@ final class Player {
         didSet {
             onPlaylistChange?()
             playlistObservers.forEach { $0() }
-            scheduleSave()
+            // A Remote Host's Playlist, shown while controlling it, isn't this Mac's to keep.
+            if controlling == nil { scheduleSave() }
         }
     }
 
     var state: MainWindowState {
         didSet {
+            if let controlling, !mirroring {
+                // Controlling another Mac: the controls ask the Host, whose answer comes back as its status.
+                if state.volume != oldValue.volume { controlling.send(.volume(state.volume)) }
+                if state.balance != oldValue.balance { controlling.send(.balance(state.balance)) }
+                if state.shuffle != oldValue.shuffle { controlling.send(.shuffle(state.shuffle)) }
+                if state.repeats != oldValue.repeats { controlling.send(.repeats(state.repeats)) }
+            }
+            if state != oldValue {
+                onChange?()
+                stateObservers.forEach { $0() }
+            }
+            guard controlling == nil, !mirroring else { return }
             if state.shuffle != oldValue.shuffle { playlist.shuffle = state.shuffle }
             if state.repeats != oldValue.repeats { playlist.repeats = state.repeats }
             if state.volume != oldValue.volume {
@@ -25,10 +38,6 @@ final class Player {
                 output.balance = state.balance
                 UserDefaults.standard.set(state.balance, forKey: Self.balanceKey)
             }
-            if state != oldValue {
-                onChange?()
-                stateObservers.forEach { $0() }
-            }
         }
     }
 
@@ -37,15 +46,18 @@ final class Player {
     var onEqualizerChange: (() -> Void)?
     private var stateObservers: [() -> Void] = []
     private var playlistObservers: [() -> Void] = []
+    private var equalizerObservers: [() -> Void] = []
+    func observeEqualizer(_ observer: @escaping () -> Void) { equalizerObservers.append(observer) }
 
     /// Also told when what the Main Window shows changes, or the Playlist does.
     func observeState(_ observer: @escaping () -> Void) { stateObservers.append(observer) }
     func observePlaylist(_ observer: @escaping () -> Void) { playlistObservers.append(observer) }
 
     /// Changes the Playlist's order or contents in place (sort, reverse, crop…); the current Track keeps playing.
-    func edit(_ change: (inout Playlist) -> Void) {
+    func edit(_ change: PlaylistEdit) {
+        if let controlling { controlling.send(.edit(change)); return }
         let current = playlist.current
-        change(&playlist)
+        change.apply(to: &playlist)
         if state.playback != .stopped, let current, playlist.entry(current) == nil { stop() }
         else if state.playback == .stopped { showCurrent() }
     }
@@ -56,11 +68,14 @@ final class Player {
     var equalizer = Player.savedEqualizer() {
         didSet {
             guard equalizer != oldValue else { return }
+            onEqualizerChange?()
+            equalizerObservers.forEach { $0() }
+            if let controlling, !mirroring { controlling.send(.equalizer(equalizer)) }
+            guard controlling == nil, !mirroring else { return }
             applyEqualizer()
             if let data = try? JSONEncoder().encode(equalizer) {
                 UserDefaults.standard.set(data, forKey: Self.equalizerKey)
             }
-            onEqualizerChange?()
         }
     }
 
@@ -157,6 +172,7 @@ final class Player {
 
     /// The analyzer follows what BitMachine's engine plays; paused or stopped, its bars fall away.
     private func animateVisualizer() {
+        if controlling != nil { return }
         let hearing = state.playback == .playing && (router.state == .routed || stations.isPlaying || playingFile)
         let levels: [Double]
         if hearing {
@@ -171,6 +187,8 @@ final class Player {
     }
 
     private func tick() {
+        // Controlling another Mac, the time comes with its status.
+        if controlling != nil { state.titleScroll += 5; return }
         var next = state
         next.titleScroll += 5
         if next.playback == .playing, next.seeking == nil {
@@ -219,7 +237,8 @@ final class Player {
         do {
             try FileManager.default.createDirectory(at: Self.playlistURL.deletingLastPathComponent(),
                                                     withIntermediateDirectories: true)
-            try JSONEncoder().encode(playlist).write(to: Self.playlistURL, options: .atomic)
+            // While controlling another Mac, this Mac's own Playlist is the one set aside.
+            try JSONEncoder().encode(stash?.playlist ?? playlist).write(to: Self.playlistURL, options: .atomic)
         } catch {
             NSLog("BitMachine: couldn't save the Playlist: \(error)")
         }
@@ -229,6 +248,7 @@ final class Player {
 
     /// Adds Tracks to the end; with `play`, the first of them starts.
     func add(_ tracks: [Track], play: Bool) {
+        if let controlling { controlling.send(.add(remotable(tracks), play: play)); return }
         let entries = playlist.append(tracks)
         if play, let first = entries.first { self.play(first.id) }
         else if state.playback == .stopped { showCurrent() }
@@ -268,6 +288,7 @@ final class Player {
     }
 
     func remove(_ ids: Set<PlaylistEntry.ID>) {
+        if let controlling { controlling.send(.edit(.remove(ids))); return }
         let wasCurrent = playlist.current.map(ids.contains) ?? false
         playlist.remove(ids)
         if wasCurrent, state.playback != .stopped {
@@ -278,15 +299,20 @@ final class Player {
     }
 
     func removeAll() {
+        if let controlling { controlling.send(.edit(.removeAll)); return }
         stop()
         playlist.removeAll()
         showCurrent()
     }
 
-    func move(_ ids: [PlaylistEntry.ID], to index: Int) { playlist.move(ids, to: index) }
+    func move(_ ids: [PlaylistEntry.ID], to index: Int) {
+        if let controlling { controlling.send(.edit(.move(ids, to: index))); return }
+        playlist.move(ids, to: index)
+    }
 
     /// Puts these Tracks in place of the Playlist (an Apple Music Playlist opened), stopped at the first.
     func replacePlaylist(with tracks: [Track]) {
+        if let controlling { controlling.send(.replace(remotable(tracks))); return }
         stop()
         playlist.removeAll()
         _ = playlist.append(tracks)
@@ -298,6 +324,7 @@ final class Player {
     /// Opens a Server Playlist: a copy of its Tracks replaces the Playlist, stopped at its first Track.
     func openServerPlaylist(_ id: String, on server: String) async throws {
         let (name, tracks) = try await servers.client(for: server).playlist(id)
+        if controlling != nil { replacePlaylist(with: tracks); return }
         stop()
         playlist.open(tracks, from: ServerPlaylistReference(server: server, id: id, name: name))
         showCurrent()
@@ -315,6 +342,7 @@ final class Player {
     // MARK: Transport
 
     func press(_ button: TransportButton) {
+        if let controlling, button != .eject { controlling.send(.press(button)); return }
         switch button {
         case .play:
             if state.playback == .paused { resume() }
@@ -348,6 +376,7 @@ final class Player {
     }
 
     func play(_ id: PlaylistEntry.ID) {
+        if let controlling { controlling.send(.play(id)); return }
         if id != playlist.current { reconnects = 0 }
         playlist.select(id)
         guard let entry = playlist.currentEntry else { return }
@@ -446,6 +475,7 @@ final class Player {
     }
 
     func seek(toFraction fraction: Double) {
+        if let controlling { controlling.send(.seek(fraction: fraction)); return }
         seek(to: fraction * state.duration)
     }
 
@@ -547,6 +577,113 @@ final class Player {
             add([station.track], play: true)
         }
         Task { await directory.countPlay(of: station) }
+    }
+
+    // MARK: Remote Control
+
+    /// The Host this copy is controlling, if any: its windows show the Host's music and work it (ADR 0005).
+    private(set) var controlling: RemoteLink?
+    /// Set while the Host's status is being copied in, so it isn't sent straight back as commands.
+    private var mirroring = false
+    /// This Mac's own Playlist and settings, put back when the control ends.
+    private var stash: (playlist: Playlist, equalizer: EqualizerSettings, state: MainWindowState)?
+
+    /// Starts showing and working the Host on `link`; this Mac's own music stops.
+    func startControlling(_ link: RemoteLink) {
+        if controlling == nil {
+            stop()
+            stash = (playlist, equalizer, state)
+        }
+        controlling = link
+        state.visualizer = nil
+    }
+
+    /// Back to this Mac's own Playlist and music.
+    func stopControlling() {
+        guard controlling != nil else { return }
+        controlling = nil
+        guard let stash else { return }
+        self.stash = nil
+        mirroring = true
+        playlist = stash.playlist
+        equalizer = stash.equalizer
+        var restored = state
+        for keep in [\MainWindowState.volume, \.balance] as [WritableKeyPath<MainWindowState, Double>] {
+            restored[keyPath: keep] = stash.state[keyPath: keep]
+        }
+        restored.shuffle = stash.state.shuffle
+        restored.repeats = stash.state.repeats
+        restored.playback = .stopped
+        restored.elapsed = 0
+        restored.visualizer = nil
+        restored.kbps = nil
+        restored.khz = nil
+        state = restored
+        mirroring = false
+        showCurrent()
+    }
+
+    /// Shows what the Host sent.
+    func mirror(_ message: RemoteMessage, host: String) {
+        guard controlling != nil else { return }
+        mirroring = true
+        defer { mirroring = false }
+        switch message {
+        case let .status(status):
+            var next = state
+            status.apply(to: &next)
+            // The slider being dragged here wins over the Host's slightly older value.
+            if state.pressed == .volume { next.volume = state.volume }
+            if state.pressed == .balance { next.balance = state.balance }
+            next.title = "\(status.title)  [on \(host)]"
+            if let noticeUntil, noticeUntil > Date() { next.title = state.title }
+            if next.title == state.title { next.titleScroll = state.titleScroll }
+            state = next
+        case let .notice(text): notice(text)
+        case let .playlist(hosted): playlist = hosted
+        case let .equalizer(settings): equalizer = settings
+        default: break
+        }
+    }
+
+    /// Tracks another Mac can play: this Mac's Local Files can't go with them.
+    private func remotable(_ tracks: [Track]) -> [Track] {
+        let kept = tracks.filter { !$0.source.isLocalFile }
+        if kept.count < tracks.count {
+            let left = tracks.count - kept.count
+            notice(left == 1 ? "1 Local File stays on this Mac" : "\(left) Local Files stay on this Mac")
+        }
+        return kept
+    }
+
+    /// Until this time, the title shows a notice instead of the Host's Track.
+    private var noticeUntil: Date?
+
+    /// Shows a short message in the title for a few seconds, while controlling another Mac.
+    func notice(_ text: String) {
+        noticeUntil = Date().addingTimeInterval(4)
+        mirroring = true
+        state.title = text
+        state.titleScroll = 0
+        mirroring = false
+    }
+
+    /// Does what a Controller asked, as if from this Mac's own windows. Local Files are left out: a Controller
+    /// mustn't be able to name files on this Mac.
+    func perform(_ command: RemoteCommand) {
+        switch command {
+        case let .press(button): if button != .eject { press(button) }
+        case let .play(id): if playlist.entry(id) != nil { play(id) }
+        case let .seek(fraction): seek(toFraction: min(max(fraction, 0), 1))
+        case let .volume(volume): state.volume = min(max(volume, 0), 1)
+        case let .balance(balance): state.balance = min(max(balance, -1), 1)
+        case let .shuffle(on): state.shuffle = on
+        case let .repeats(on): state.repeats = on
+        case let .equalizer(settings): equalizer = settings.clamped()
+        case let .edit(change): edit(change)
+        case let .add(tracks, play): add(tracks.filter { !$0.source.isLocalFile }, play: play)
+        case let .replace(tracks): replacePlaylist(with: tracks.filter { !$0.source.isLocalFile })
+        }
     }
 
     static func clock(_ seconds: TimeInterval) -> String {

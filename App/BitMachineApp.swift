@@ -25,6 +25,7 @@ struct BitMachineApp: App {
                 Divider()
                 Button("Library…") { AppDelegate.shared.showLibrary(nil) }
                     .keyboardShortcut("l", modifiers: .command)
+                Button("Control Another BitMachine…") { AppDelegate.shared.showRemote(nil) }
             }
             CommandGroup(before: .toolbar) {
                 Button("Double Size") { AppDelegate.shared.toggleDoubleSize(nil) }

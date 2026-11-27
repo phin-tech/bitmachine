@@ -121,6 +121,6 @@ public enum MainSprites {
     }()
 }
 
-public enum TransportButton: CaseIterable, Sendable {
+public enum TransportButton: String, CaseIterable, Codable, Sendable {
     case previous, play, pause, stop, next, eject
 }

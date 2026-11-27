@@ -151,6 +151,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         double.state = isDoubleSize ? .on : .off
         menu.addItem(.separator())
         menu.addItem(withTitle: "Speakers…", action: #selector(AppDelegate.showSpeakers(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Control Another BitMachine…", action: #selector(AppDelegate.showRemote(_:)),
+                     keyEquivalent: "")
         menu.popUp(positioning: nil, at: CGPoint(x: MainWindowLayout.options.minX * scale,
                                                  y: MainWindowLayout.options.maxY * scale), in: view)
     }

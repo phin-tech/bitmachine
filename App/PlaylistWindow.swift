@@ -247,7 +247,7 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
                 guard let self else { return }
                 self.player.remove(Set(self.entries.map(\.id)).subtracting(self.selection))
             }
-            item("Remove Unavailable Tracks") { [weak self] in self?.player.edit { $0.removeUnavailable() } }
+            item("Remove Unavailable Tracks") { [weak self] in self?.player.edit(.removeUnavailable) }
             menu.addItem(.separator())
             item("Remove All", enabled: !entries.isEmpty) { [weak self] in self?.player.removeAll() }
         case .select:
@@ -259,16 +259,16 @@ final class PlaylistWindowController: NSObject, NSWindowDelegate {
                 self.refreshTimes()
             }
         case .misc:
-            item("Sort by Title") { [weak self] in self?.player.edit { $0.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending } } }
+            item("Sort by Title") { [weak self] in self?.player.edit(.sort(.title)) }
             item("Sort by Artist") { [weak self] in
-                self?.player.edit { $0.sort { localizedLess([$0.artist, $0.album, $0.title], [$1.artist, $1.album, $1.title]) } }
+                self?.player.edit(.sort(.artist))
             }
             item("Sort by Album") { [weak self] in
-                self?.player.edit { $0.sort { localizedLess([$0.album, $0.artist, $0.title], [$1.album, $1.artist, $1.title]) } }
+                self?.player.edit(.sort(.album))
             }
             menu.addItem(.separator())
-            item("Reverse") { [weak self] in self?.player.edit { $0.reverse() } }
-            item("Randomize") { [weak self] in self?.player.edit { $0.randomize() } }
+            item("Reverse") { [weak self] in self?.player.edit(.reverse) }
+            item("Randomize") { [weak self] in self?.player.edit(.randomize) }
         case .list:
             item("New Playlist", enabled: !entries.isEmpty) { [weak self] in self?.player.removeAll() }
             item("Open Playlist File…") { [weak self] in self?.openPlaylistFile() }
@@ -382,15 +382,6 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder _: NSCoder) { fatalError() }
 
     @objc private func fire() { run() }
-}
-
-/// Compares key by key, the way Finder sorts names.
-private func localizedLess(_ a: [String], _ b: [String]) -> Bool {
-    for (x, y) in zip(a, b) {
-        let order = x.localizedStandardCompare(y)
-        if order != .orderedSame { return order == .orderedAscending }
-    }
-    return false
 }
 
 /// Draws the Playlist Window: the Skin's frame pixel for pixel, then the rows in a real font at full resolution.

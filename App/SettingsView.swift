@@ -7,10 +7,28 @@ struct SettingsView: View {
 
     @AppStorage(Fonts.titleKey) private var titleInIntelOneMono = false
     @AppStorage(Fonts.listsInSkinFontKey) private var listsInSkinFont = false
+    @AppStorage(Remote.hostingKey) private var allowsRemote = false
 
     var body: some View {
         Form {
             ServersSettings(servers: AppDelegate.shared.player.servers)
+            Section {
+                Toggle("Allow other Macs to control this BitMachine", isOn: Binding(
+                    get: { allowsRemote },
+                    set: {
+                        allowsRemote = $0
+                        AppDelegate.shared.remoteHost.update()
+                    }))
+                Button("Forget Paired Macs") { AppDelegate.shared.remoteHost.forgetControllers() }
+            } header: {
+                Text("Remote Control")
+            } footer: {
+                Text("Another Mac on this network can then play, pause, skip and change the Playlist here from its own "
+                    + "BitMachine (File ▸ Control Another BitMachine…). The first time, this Mac shows a code to type "
+                    + "there. A four-digit code keeps out other people on the network, but it can't stop someone "
+                    + "deliberately intercepting the pairing.")
+                    .foregroundStyle(.secondary)
+            }
             Section {
                 Toggle("Song title in Intel One Mono", isOn: $titleInIntelOneMono)
                 Toggle("Lists in the skin's own font", isOn: $listsInSkinFont)

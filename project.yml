@@ -56,6 +56,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSAppleMusicUsageDescription: BitMachine plays and searches Apple Music for you.
+        NSLocalNetworkUsageDescription: BitMachine finds and connects to BitMachine on your other Macs, so one can control another.
+        NSBonjourServices:
+          - _bitmachine._tcp
         NSAudioCaptureUsageDescription: BitMachine listens to Apple Music playback to drive its visualizer, equalizer and volume.
         # Most internet radio Stations stream over plain http from hosts the listener picks, so App Transport
         # Security can't list them; the Station Directory and everything else use https anyway.
