@@ -90,9 +90,12 @@ final class DebugDriver {
 
     // MARK: Windows
 
-    /// Visible windows, front to back; their index here is what `snapshot` takes.
+    /// Visible windows, front to back; their index here is what `snapshot` takes. Panels and sheets (which
+    /// `orderedWindows` leaves out) come first.
     private func visibleWindows() -> [NSWindow] {
-        NSApp.orderedWindows.filter { $0.isVisible && $0.contentView != nil }
+        let ordered = NSApp.orderedWindows
+        let panels = NSApp.windows.filter { $0 is NSPanel && !ordered.contains($0) }
+        return (panels + ordered).filter { $0.isVisible && $0.contentView != nil }
     }
 
     /// Sends the window a mouse down, drags if `to` differs, and a mouse up, as a click there would. Points count from

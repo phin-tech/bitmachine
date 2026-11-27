@@ -8,6 +8,16 @@ import Network
 /// each other with Bonjour, pair once with a Pairing Code the Host shows, and talk over an encrypted connection.
 enum Remote {
     static let serviceType = "_bitmachine._tcp"
+
+    /// TCP with keepalive, so a Mac that went to sleep or left the network is noticed in about half a minute.
+    static var parameters: NWParameters {
+        let tcp = NWProtocolTCP.Options()
+        tcp.enableKeepalive = true
+        tcp.keepaliveIdle = 10
+        tcp.keepaliveInterval = 5
+        tcp.keepaliveCount = 3
+        return NWParameters(tls: nil, tcp: tcp)
+    }
     static let hostingKey = "remoteHosting"
 
     /// This copy's identity on the network, the same across launches.
@@ -71,6 +81,7 @@ final class RemoteConnection {
     private let connection: NWConnection
     private var channel = RemoteChannel()
     private var closed = false
+    private var isReady = false
     /// Handles each message as it arrives; may set the session key before the next is read.
     var onMessage: ((RemoteMessage) -> Void)?
     var onReady: (() -> Void)?
@@ -81,16 +92,23 @@ final class RemoteConnection {
     }
 
     convenience init(to endpoint: NWEndpoint) {
-        self.init(NWConnection(to: endpoint, using: .tcp))
+        self.init(NWConnection(to: endpoint, using: Remote.parameters))
     }
 
     func start() {
         connection.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated {
                 switch state {
-                case .ready: self?.onReady?()
+                case .ready:
+                    self?.isReady = true
+                    self?.onReady?()
                 case let .failed(error): self?.close("\(error.localizedDescription)")
-                case let .waiting(error): self?.close("\(error.localizedDescription)")
+                case let .waiting(error):
+                    // Often passing (the network coming up, the local network permission being answered).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                        guard let self, !self.isReady else { return }
+                        self.close("\(error.localizedDescription)")
+                    }
                 case .cancelled: self?.close(nil)
                 default: break
                 }
@@ -151,6 +169,8 @@ final class RemoteHost {
     private var lastStatus: RemoteStatus?
     private var playlistChanged = false
     private var equalizerChanged = false
+    private var failedPairings = 0
+    private var lockedUntil: Date?
 
     init(player: Player) {
         self.player = player
@@ -180,7 +200,7 @@ final class RemoteHost {
                 port = NWEndpoint.Port(rawValue: fixed) ?? .any
             }
             #endif
-            let listener = try NWListener(using: .tcp, on: port)
+            let listener = try NWListener(using: Remote.parameters, on: port)
             listener.service = NWListener.Service(name: Remote.name, type: Remote.serviceType,
                                                   txtRecord: NWTXTRecord(["id": Remote.id]))
             listener.newConnectionHandler = { [weak self] connection in
@@ -258,6 +278,9 @@ final class RemoteHost {
                 return deny(session, "this BitMachine is a different version; update both Macs")
             }
             guard pairing == nil else { return deny(session, "\(Remote.name) is pairing with another Mac; try again soon") }
+            if let lockedUntil, lockedUntil > Date() {
+                return deny(session, "too many wrong codes; try again in \(Int(lockedUntil.timeIntervalSinceNow.rounded(.up))) seconds")
+            }
             var code = RemotePairing.newCode()
             #if DEBUG
             if let fixed = ProcessInfo.processInfo.environment["BITMACHINE_PAIRING_CODE"] { code = fixed }
@@ -282,8 +305,12 @@ final class RemoteHost {
             closeCodePanel()
             // One try per code: a wrong one ends the pairing, and the next try shows a new code.
             guard RemotePairing.matches(proof, RemotePairing.pairingProof(secret, by: .controller)) else {
+                // Each wrong code doubles the wait before the next pairing, so guessing all of them takes years.
+                failedPairings += 1
+                lockedUntil = Date().addingTimeInterval(min(5 * pow(2, Double(failedPairings - 1)), 3600))
                 return deny(session, "that isn't the code \(Remote.name) showed")
             }
+            failedPairings = 0
             Remote.controllerKeys.set(RemotePairing.pairingKey(secret), for: controller.controllerID, label: controller.name)
             session.phase = .new
             session.connection.send(.paired(RemotePairing.pairingProof(secret, by: .host)))
@@ -346,8 +373,9 @@ final class RemoteHost {
         panel.contentView = view
         panel.center()
         panel.level = .floating
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        // The Host is often in the background, or nobody's using it: the code must show anyway.
+        panel.hidesOnDeactivate = false
+        panel.orderFrontRegardless()
         codePanel = panel
     }
 
@@ -416,7 +444,7 @@ final class RemoteController: ObservableObject {
 
     func startBrowsing() {
         guard browser == nil else { return }
-        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: Remote.serviceType, domain: nil), using: .tcp)
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: Remote.serviceType, domain: nil), using: Remote.parameters)
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             MainActor.assumeIsolated { self?.found = Self.hosts(in: results) }
         }
@@ -517,13 +545,16 @@ final class RemoteController: ObservableObject {
             guard let self, let connection, connection === self.connection else { return }
             switch message {
             case let .pairChallenge(hostID, publicKey):
-                guard let code = self.askForCode(name),
-                      let agreed = try? RemotePairing.pairingSecret(privateKey, peer: publicKey, code: code) else {
-                    return self.disconnect()
+                self.status = "Type the code \(name) is showing."
+                self.askForCode(name) { [weak self, weak connection] code in
+                    guard let self, let connection, connection === self.connection else { return }
+                    guard let code, let agreed = try? RemotePairing.pairingSecret(privateKey, peer: publicKey, code: code)
+                    else { return self.ended("") }
+                    secret = agreed
+                    pairedHost = hostID
+                    self.status = "Pairing with \(name)…"
+                    connection.send(.pairProof(RemotePairing.pairingProof(agreed, by: .controller)))
                 }
-                secret = agreed
-                pairedHost = hostID
-                connection.send(.pairProof(RemotePairing.pairingProof(agreed, by: .controller)))
             case let .paired(proof):
                 guard let secret, let pairedHost,
                       RemotePairing.matches(proof, RemotePairing.pairingProof(secret, by: .host)) else {
@@ -562,9 +593,13 @@ final class RemoteController: ObservableObject {
         open?.close(nil)
     }
 
-    private func askForCode(_ name: String) -> String? {
+    /// The window to ask for the Pairing Code in, as a sheet.
+    weak var window: NSWindow?
+
+    /// Asks for the Pairing Code without holding up the connection, and hands it over, or nil if cancelled.
+    private func askForCode(_ name: String, then answer: @escaping (String?) -> Void) {
         #if DEBUG
-        if let code = ProcessInfo.processInfo.environment["BITMACHINE_PAIRING_CODE"] { return code }
+        if let code = ProcessInfo.processInfo.environment["BITMACHINE_PAIRING_CODE"] { return answer(code) }
         #endif
         let alert = NSAlert()
         alert.messageText = "Pair with \(name)"
@@ -577,8 +612,15 @@ final class RemoteController: ObservableObject {
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let code = field.stringValue.filter(\.isNumber)
-        return code.isEmpty ? nil : code
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            let code = field.stringValue.filter(\.isNumber)
+            answer(response == .alertFirstButtonReturn && !code.isEmpty ? code : nil)
+        }
+        if let window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            alert.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            DispatchQueue.main.async { finish(alert.runModal()) }
+        }
     }
 }

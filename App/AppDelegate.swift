@@ -82,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (one started with BITMACHINE_REMOTE_PORT), without Bonjour.
         if let address = ProcessInfo.processInfo.environment["BITMACHINE_CONTROL"],
            let colon = address.lastIndex(of: ":"), let port = NWEndpoint.Port(String(address[address.index(after: colon)...])) {
+            showRemote(nil)
             remoteController.connect(to: .hostPort(host: NWEndpoint.Host(String(address[..<colon])), port: port),
                                      name: "Test Host")
             // BITMACHINE_CONTROL_STATION="<stream URL>" then tunes the Host to it, once connected.

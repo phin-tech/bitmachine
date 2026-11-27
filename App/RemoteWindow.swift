@@ -17,6 +17,7 @@ final class RemoteWindowController: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(rootView: RemoteView(controller: controller))
         window.delegate = self
         window.center()
+        controller.window = window
     }
 
     func show() {

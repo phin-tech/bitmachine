@@ -70,7 +70,10 @@ final class Player {
             guard equalizer != oldValue else { return }
             onEqualizerChange?()
             equalizerObservers.forEach { $0() }
-            if let controlling, !mirroring { controlling.send(.equalizer(equalizer)) }
+            if let controlling, !mirroring {
+                controlling.send(.equalizer(equalizer))
+                equalizerSent = Date()
+            }
             guard controlling == nil, !mirroring else { return }
             applyEqualizer()
             if let data = try? JSONEncoder().encode(equalizer) {
@@ -207,7 +210,11 @@ final class Player {
     private var saveTask: Task<Void, Never>?
 
     static var playlistURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        #if DEBUG
+        // For agents running two copies at once (Remote Control): each keeps its own Playlist.
+        if let path = ProcessInfo.processInfo.environment["BITMACHINE_PLAYLIST"] { return URL(fileURLWithPath: path) }
+        #endif
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BitMachine/Playlist.json")
     }
 
@@ -583,6 +590,8 @@ final class Player {
 
     /// The Host this copy is controlling, if any: its windows show the Host's music and work it (ADR 0005).
     private(set) var controlling: RemoteLink?
+    /// When this copy last sent an equalizer change to the Host.
+    private var equalizerSent: Date?
     /// Set while the Host's status is being copied in, so it isn't sent straight back as commands.
     private var mirroring = false
     /// This Mac's own Playlist and settings, put back when the control ends.
@@ -641,7 +650,10 @@ final class Player {
             state = next
         case let .notice(text): notice(text)
         case let .playlist(hosted): playlist = hosted
-        case let .equalizer(settings): equalizer = settings
+        case let .equalizer(settings):
+            // While a slider here is moving, the Host's echoes are a step behind it.
+            if let equalizerSent, Date().timeIntervalSince(equalizerSent) < 0.6 { return }
+            equalizer = settings
         default: break
         }
     }
@@ -680,6 +692,8 @@ final class Player {
         case let .shuffle(on): state.shuffle = on
         case let .repeats(on): state.repeats = on
         case let .equalizer(settings): equalizer = settings.clamped()
+        case let .edit(.remove(ids)): remove(ids)
+        case .edit(.removeAll): removeAll()
         case let .edit(change): edit(change)
         case let .add(tracks, play): add(tracks.filter { !$0.source.isLocalFile }, play: play)
         case let .replace(tracks): replacePlaylist(with: tracks.filter { !$0.source.isLocalFile })
