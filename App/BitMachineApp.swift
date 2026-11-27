@@ -38,6 +38,8 @@ struct BitMachineApp: App {
                 Button("Radio") { AppDelegate.shared.toggleRadio(nil) }
                     .keyboardShortcut("r", modifiers: .option)
                 Divider()
+                Button("Speakers…") { AppDelegate.shared.showSpeakers(nil) }
+                Divider()
             }
         }
     }

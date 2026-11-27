@@ -137,6 +137,10 @@ final class Player {
         stations.onDropped = { [weak self] error in self?.stationDropped(error) }
         output.volume = state.volume
         applyEqualizer()
+        output.onOutputChange = { [weak self] in
+            guard let self else { return }
+            Task { await self.router.retap() }
+        }
         router.onStateChange = { [weak self] state in
             guard let self, case let .unavailable(reason) = state else { return }
             // Once: the music plays on, but BitMachine's volume and equalizer can't reach it.

@@ -1,4 +1,5 @@
 import AppKit
+import AVKit
 import BitMachineKit
 
 /// A borderless window that can still become key, as every player window must to take clicks and keys.
@@ -117,6 +118,28 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Apple's speaker picker, kept out of sight and opened from menus. With no player of its own it picks the
+    /// Mac's output, AirPlay speakers included, and BitMachine follows it.
+    private lazy var speakerPicker: AVRoutePickerView = {
+        let picker = AVRoutePickerView(frame: .zero)
+        picker.alphaValue = 0
+        view.addSubview(picker)
+        return picker
+    }()
+
+    /// Opens the speaker picker under the options button.
+    func showSpeakers() {
+        let picker = speakerPicker
+        picker.frame = CGRect(x: MainWindowLayout.options.minX * scale, y: MainWindowLayout.options.minY * scale,
+                              width: MainWindowLayout.options.width * scale, height: MainWindowLayout.options.height * scale)
+        window.makeKeyAndOrderFront(nil)
+        func button(in view: NSView) -> NSButton? {
+            if let button = view as? NSButton { return button }
+            return view.subviews.lazy.compactMap(button(in:)).first
+        }
+        button(in: picker)?.performClick(nil)
+    }
+
     private func showOptionsMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Skin…", action: #selector(AppDelegate.openSkin(_:)), keyEquivalent: "")
@@ -126,6 +149,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         let double = menu.addItem(withTitle: "Double Size", action: #selector(AppDelegate.toggleDoubleSize(_:)),
                                   keyEquivalent: "")
         double.state = isDoubleSize ? .on : .off
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Speakers…", action: #selector(AppDelegate.showSpeakers(_:)), keyEquivalent: "")
         menu.popUp(positioning: nil, at: CGPoint(x: MainWindowLayout.options.minX * scale,
                                                  y: MainWindowLayout.options.maxY * scale), in: view)
     }

@@ -264,6 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     var isEqualizerVisible: Bool { equalizer?.isVisible ?? false }
 
+    @objc func showSpeakers(_: Any?) { main.showSpeakers() }
+
     @objc func toggleRadio(_: Any?) {
         if radio.isVisible { radio.hide() } else { radio.show() }
     }

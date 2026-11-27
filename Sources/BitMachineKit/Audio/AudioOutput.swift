@@ -62,6 +62,39 @@ public final class AudioOutput: @unchecked Sendable {
         engine.connect(panner, to: engine.mainMixerNode, format: Self.processing)
         engine.mainMixerNode.outputVolume = Float(volume * volume)
         installAnalyzerTap()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            self?.outputChanged()
+        }
+    }
+
+    deinit {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+    }
+
+    /// Called on the main queue after the output device changed (a speaker picked, headphones plugged in or out)
+    /// and the engine has started again.
+    public var onOutputChange: (() -> Void)?
+    private var configurationObserver: NSObjectProtocol?
+
+    /// The output device changed, and macOS stopped the engine and its file player. Starts both again where they
+    /// were, so the music carries on through the new device.
+    private func outputChanged() {
+        guard source != nil || file != nil else { return }
+        let resumeAt = lastFileElapsed
+        let wasPaused = filePaused
+        do {
+            try ensureRunning()
+        } catch {
+            return
+        }
+        if file != nil {
+            fileGeneration += 1
+            filePlayer.stop()
+            schedule(from: resumeAt)
+            if !wasPaused { filePlayer.play() }
+        }
+        onOutputChange?()
     }
 
     private func ensureRunning() throws {
@@ -148,6 +181,10 @@ public final class AudioOutput: @unchecked Sendable {
     /// Bumped by every stop, seek and new file, so a finished callback from before it is ignored.
     private var fileGeneration = 0
     private var onFileEnd: (@Sendable () -> Void)?
+    /// Paused by BitMachine, so a restarted engine leaves it paused.
+    private var filePaused = false
+    /// The newest position read while playing; macOS forgets it when it stops the engine for a new device.
+    private var lastFileElapsed: TimeInterval = 0
 
     /// Plays an audio file from `time`; `onEnd` is called on the main queue when it has played to the end.
     @discardableResult
@@ -161,6 +198,7 @@ public final class AudioOutput: @unchecked Sendable {
         try ensureRunning()
         schedule(from: time)
         filePlayer.play()
+        filePaused = false
         return FileInfo(file)
     }
 
@@ -171,11 +209,15 @@ public final class AudioOutput: @unchecked Sendable {
         fileGeneration += 1
         let generation = fileGeneration
         fileOffset = Double(start) / rate
+        lastFileElapsed = fileOffset
         let remaining = AVAudioFrameCount(max(file.length - start, 0))
         guard remaining > 0 else { return }
         let ended = onFileEnd
+        let engine = engine
         filePlayer.scheduleSegment(file, startingFrame: start, frameCount: remaining, at: nil,
                                    completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            // A device change stops the engine and cuts the segment short: that isn't the end of the file.
+            guard engine.isRunning else { return }
             DispatchQueue.main.async {
                 guard let self, self.fileGeneration == generation, self.file != nil else { return }
                 ended?()
@@ -185,23 +227,32 @@ public final class AudioOutput: @unchecked Sendable {
 
     public var fileElapsed: TimeInterval {
         guard file != nil, let nodeTime = filePlayer.lastRenderTime,
-              let playerTime = filePlayer.playerTime(forNodeTime: nodeTime) else { return fileOffset }
-        return fileOffset + Double(playerTime.sampleTime) / playerTime.sampleRate
+              let playerTime = filePlayer.playerTime(forNodeTime: nodeTime) else { return lastFileElapsed }
+        let elapsed = fileOffset + Double(playerTime.sampleTime) / playerTime.sampleRate
+        lastFileElapsed = elapsed
+        return elapsed
     }
 
     /// Whether a file is loaded (playing or paused).
     public var hasFile: Bool { file != nil }
 
-    public func pauseFile() { filePlayer.pause() }
-    public func resumeFile() { filePlayer.play() }
+    public func pauseFile() {
+        _ = fileElapsed
+        filePaused = true
+        filePlayer.pause()
+    }
+
+    public func resumeFile() {
+        filePaused = false
+        filePlayer.play()
+    }
 
     public func seekFile(to time: TimeInterval) {
         guard file != nil else { return }
-        let wasPlaying = filePlayer.isPlaying
         fileGeneration += 1
         filePlayer.stop()
         schedule(from: time)
-        if wasPlaying { filePlayer.play() }
+        if !filePaused { filePlayer.play() }
     }
 
     public func stopFile() {

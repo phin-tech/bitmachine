@@ -89,6 +89,13 @@ final class AppleMusicRouter {
         }
     }
 
+    /// Taps Apple Music again if it's routed: the tap is tied to the output device it started on.
+    func retap() async {
+        guard tap != nil else { return }
+        stop()
+        await start()
+    }
+
     func stop() {
         watchdog?.cancel()
         watchdog = nil
